@@ -92,22 +92,14 @@ export const getAppRedirectUri = () => {
 };
 
 export const getLoginUrl = () => {
-  const appRedirectUri = getAppRedirectUri();
-
-  // Build the server redirect URI
-  // For native: include appRedirect as a query param in the redirectUri
-  // so the server can read it from req.query when the OAuth callback arrives
-  let serverRedirectUri = getRedirectUri();
-  if (appRedirectUri) {
-    serverRedirectUri = `${serverRedirectUri}?appRedirect=${encodeURIComponent(appRedirectUri)}`;
-  }
+  const redirectUri = getRedirectUri();
 
   // state must be base64(redirectUri) - this is what the SDK's decodeState() expects
-  const state = encodeState(serverRedirectUri);
+  const state = encodeState(redirectUri);
 
   const url = new URL(`${OAUTH_PORTAL_URL}/app-auth`);
   url.searchParams.set("appId", APP_ID);
-  url.searchParams.set("redirectUri", serverRedirectUri);
+  url.searchParams.set("redirectUri", redirectUri);
   url.searchParams.set("state", state);
   url.searchParams.set("type", "signIn");
 

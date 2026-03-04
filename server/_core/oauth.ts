@@ -71,13 +71,6 @@ export function registerOAuthRoutes(app: Express) {
       return;
     }
 
-    // appRedirect is passed as a query param in the redirectUri itself
-    // e.g., /api/oauth/callback?appRedirect=manus20260304040150%3A%2F%2Foauth%2Fcallback
-    const appRedirect = getQueryParam(req, "appRedirect") ?? null;
-    if (appRedirect) {
-      console.log("[OAuth] appRedirect from query:", appRedirect);
-    }
-
     try {
       const tokenResponse = await sdk.exchangeCodeForToken(code, state);
       const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
@@ -90,18 +83,33 @@ export function registerOAuthRoutes(app: Express) {
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
 
-      // If appRedirect is set, redirect to the native app's deep link with session token
-      if (appRedirect && (appRedirect.startsWith("manus") || appRedirect.startsWith("https://") || appRedirect.startsWith("http://"))) {
-        console.log("[OAuth] Redirecting to app deep link:", appRedirect);
+      const userAgent = req.headers["user-agent"] || "";
+      console.log("[OAuth] Callback User-Agent:", userAgent);
+
+      // Always redirect to the manus* deep link with session token.
+      // - On native (Expo Go / standalone): expo-web-browser detects the manus* scheme
+      //   and automatically closes the browser, returning the user to the app.
+      //   The app's oauth/callback screen then reads sessionToken from the URL params.
+      // - On web: the browser cannot open manus:// URLs, so we fall back to the web frontend.
+      //   We detect web by checking if the User-Agent looks like a desktop/web browser.
+      // Determine if this is a web browser request (not native app).
+      // We use the x-web-preview header as a signal that the request comes from the web preview iframe.
+      // All other requests (including iOS Safari opened by openAuthSessionAsync) are treated as native.
+      const isWebBrowser = req.headers["x-web-preview"] !== undefined;
+
+      const APP_SCHEME = "manus20260304040150";
+      if (!isWebBrowser) {
+        // Native app or iOS Safari via openAuthSessionAsync: redirect to manus* deep link
+        console.log("[OAuth] Redirecting to native app deep link");
         const userBase64 = Buffer.from(JSON.stringify(buildUserResponse(user))).toString("base64");
-        const deepLinkUrl = new URL(appRedirect);
+        const deepLinkUrl = new URL(`${APP_SCHEME}://oauth/callback`);
         deepLinkUrl.searchParams.set("sessionToken", sessionToken);
         deepLinkUrl.searchParams.set("user", userBase64);
         res.redirect(302, deepLinkUrl.toString());
         return;
       }
 
-      // Redirect to the frontend URL (Expo web on port 8081)
+      // Web browser: redirect to the frontend URL (Expo web on port 8081)
       // Cookie is set with parent domain so it works across both 3000 and 8081 subdomains
       const frontendUrl =
         process.env.EXPO_WEB_PREVIEW_URL ||
