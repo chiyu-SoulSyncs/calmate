@@ -1,7 +1,7 @@
 import type { FreeSlot } from "./google-calendar";
 
 export type ToneLevel = "formal" | "casual" | "friendly";
-export type MessageFormat = "bullet" | "table" | "prose";
+export type MessageFormat = "line" | "mail" | "plain";
 
 export interface MessageOptions {
   slots: FreeSlot[];
@@ -14,7 +14,16 @@ export interface MessageOptions {
 
 const WEEKDAYS_JA = ["日", "月", "火", "水", "木", "金", "土"];
 
+/** 短形式: 3/10(月) */
 function formatDate(date: Date): string {
+  const m = date.getMonth() + 1;
+  const d = date.getDate();
+  const w = WEEKDAYS_JA[date.getDay()];
+  return `${m}/${d}(${w})`;
+}
+
+/** 長形式: 3月10日（月） */
+function formatDateLong(date: Date): string {
   const m = date.getMonth() + 1;
   const d = date.getDate();
   const w = WEEKDAYS_JA[date.getDay()];
@@ -25,10 +34,6 @@ function formatTime(date: Date): string {
   const h = date.getHours().toString().padStart(2, "0");
   const m = date.getMinutes().toString().padStart(2, "0");
   return `${h}:${m}`;
-}
-
-function formatSlot(slot: FreeSlot): string {
-  return `${formatDate(slot.start)} ${formatTime(slot.start)}〜${formatTime(slot.end)}`;
 }
 
 function formatDuration(minutes: number): string {
@@ -69,30 +74,31 @@ const DURATION_LABELS: Record<ToneLevel, (min: number) => string> = {
 
 // ---- Format builders ----
 
-function buildBullet(slots: FreeSlot[], tone: ToneLevel, duration: number): string {
-  const lines = slots.map((s, i) => `${i + 1}. ${formatSlot(s)}`);
+/**
+ * LINE向け: 絵文字付きシンプル箇条書き
+ * 例: 📅 3/10(月) 10:00〜11:00
+ */
+function buildLine(slots: FreeSlot[], tone: ToneLevel, duration: number): string {
+  const lines = slots.map((s) => `📅 ${formatDate(s.start)} ${formatTime(s.start)}〜${formatTime(s.end)}`);
   return `${lines.join("\n")}\n${DURATION_LABELS[tone](duration)}`;
 }
 
-function buildTable(slots: FreeSlot[], _tone: ToneLevel, duration: number): string {
-  const header = "| # | 日付 | 時間 |\n|---|------|------|";
-  const rows = slots.map(
-    (s, i) =>
-      `| ${i + 1} | ${formatDate(s.start)} | ${formatTime(s.start)}〜${formatTime(s.end)} |`
-  );
-  return `${header}\n${rows.join("\n")}\n\n所要時間：${formatDuration(duration)}`;
+/**
+ * メール向け: 「●」付きで日付を丁寧に列挙
+ * 例: ● 3月10日（月） 10:00〜11:00
+ */
+function buildMail(slots: FreeSlot[], tone: ToneLevel, duration: number): string {
+  const lines = slots.map((s) => `● ${formatDateLong(s.start)} ${formatTime(s.start)}〜${formatTime(s.end)}`);
+  return `${lines.join("\n")}\n${DURATION_LABELS[tone](duration)}`;
 }
 
-function buildProse(slots: FreeSlot[], tone: ToneLevel, duration: number): string {
-  if (slots.length === 1) {
-    return `${formatSlot(slots[0])}はいかがでしょうか。${DURATION_LABELS[tone](duration)}`;
-  }
-  const last = slots[slots.length - 1];
-  const others = slots.slice(0, -1).map(formatSlot);
-  return (
-    `${others.join("、")}、または${formatSlot(last)}はいかがでしょうか。` +
-    `\n${DURATION_LABELS[tone](duration)}`
-  );
+/**
+ * そのままコピー向け: 挨拶なし、「●」で日程だけ列挙
+ * 例: ● 3/10(月) 10:00〜11:00
+ */
+function buildPlain(slots: FreeSlot[], duration: number): string {
+  const lines = slots.map((s) => `● ${formatDate(s.start)} ${formatTime(s.start)}〜${formatTime(s.end)}`);
+  return `${lines.join("\n")}\n（${formatDuration(duration)}）`;
 }
 
 // ---- Main generator ----
@@ -102,27 +108,27 @@ export function generateMessage(options: MessageOptions): string {
 
   if (slots.length === 0) return "候補となる空き時間が見つかりませんでした。";
 
+  // 「そのままコピー」は挨拶・締めなし
+  if (format === "plain") {
+    return buildPlain(slots, requiredDurationMinutes);
+  }
+
   const greeting = GREETINGS[toneLevel](toName);
   const closing = CLOSINGS[toneLevel];
 
   let body: string;
-  if (format === "bullet") {
-    body = buildBullet(slots, toneLevel, requiredDurationMinutes);
-  } else if (format === "table") {
-    body = buildTable(slots, toneLevel, requiredDurationMinutes);
+  if (format === "line") {
+    body = buildLine(slots, toneLevel, requiredDurationMinutes);
   } else {
-    body = buildProse(slots, toneLevel, requiredDurationMinutes);
+    // "mail"
+    body = buildMail(slots, toneLevel, requiredDurationMinutes);
   }
 
   const parts: string[] = [];
 
-  if (subject && (toName || true)) {
-    if (toneLevel === "formal") {
-      parts.push(`件名：${subject}`);
-    } else if (toneLevel === "casual") {
-      parts.push(`件名：${subject}`);
-    }
-    // タメ口は件名なし
+  // 件名はメール向けのみ
+  if (format === "mail" && subject && toneLevel !== "friendly") {
+    parts.push(`件名：${subject}`);
   }
 
   parts.push(greeting);

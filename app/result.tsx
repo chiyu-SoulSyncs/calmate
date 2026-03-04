@@ -22,17 +22,22 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
-function formatSlotLabel(slot: FreeSlot) {
+function formatSlotDate(slot: FreeSlot) {
   const s = slot.start;
-  const e = slot.end;
   const m = s.getMonth() + 1;
   const d = s.getDate();
   const w = WEEKDAYS[s.getDay()];
+  return `${m}月${d}日（${w}）`;
+}
+
+function formatSlotTime(slot: FreeSlot) {
+  const s = slot.start;
+  const e = slot.end;
   const sh = s.getHours().toString().padStart(2, "0");
   const sm = s.getMinutes().toString().padStart(2, "0");
   const eh = e.getHours().toString().padStart(2, "0");
   const em = e.getMinutes().toString().padStart(2, "0");
-  return `${m}月${d}日（${w}） ${sh}:${sm}〜${eh}:${em}`;
+  return `${sh}:${sm} 〜 ${eh}:${em}`;
 }
 
 const TONE_OPTIONS: { label: string; value: ToneLevel; desc: string }[] = [
@@ -41,10 +46,10 @@ const TONE_OPTIONS: { label: string; value: ToneLevel; desc: string }[] = [
   { label: "タメ口", value: "friendly", desc: "よろしく！" },
 ];
 
-const FORMAT_OPTIONS: { label: string; value: MessageFormat; icon: string }[] = [
-  { label: "箇条書き", value: "bullet", icon: "1. 〇月〇日..." },
-  { label: "表形式", value: "table", icon: "| # | 日付 |..." },
-  { label: "文章", value: "prose", icon: "〇月〇日はいかがでしょうか" },
+const FORMAT_OPTIONS: { label: string; value: MessageFormat; desc: string; example: string }[] = [
+  { label: "LINEで送る", value: "line", desc: "絵文字付きシンプル", example: "📅 3/10(月) 10:00〜11:00" },
+  { label: "メールで送る", value: "mail", desc: "挨拶・件名付き", example: "● 3月10日（月） 10:00〜11:00" },
+  { label: "そのままコピー", value: "plain", desc: "日程のみシンプル", example: "● 3/10(月) 10:00〜11:00" },
 ];
 
 export default function ResultScreen() {
@@ -58,7 +63,7 @@ export default function ResultScreen() {
   const [toName, setToName] = useState("");
   const [subject, setSubject] = useState("");
   const [tone, setTone] = useState<ToneLevel>("formal");
-  const [format, setFormat] = useState<MessageFormat>("bullet");
+  const [format, setFormat] = useState<MessageFormat>("mail");
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -168,19 +173,26 @@ export default function ResultScreen() {
                   key={i}
                   style={({ pressed }) => [
                     st.row,
-                    { padding: 12, borderRadius: 12, marginBottom: 6, borderWidth: 1.5 },
+                    { paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14, marginBottom: 8, borderWidth: 1.5 },
                     isSelected ? { backgroundColor: c.tealLight, borderColor: c.primary } : { backgroundColor: c.background, borderColor: c.border },
                     pressed && { opacity: 0.8 },
                   ]}
                   onPress={() => toggleSlot(i)}
                 >
-                  <View style={[{ width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: "center", justifyContent: "center", marginRight: 12 }, isSelected ? { backgroundColor: c.primary, borderColor: c.primary } : { borderColor: c.border }]}>
-                    {isSelected && <IconSymbol name="checkmark" size={13} color="#fff" />}
-                  </View>
+                  {/* ● インジケータ */}
+                  <Text style={{ fontSize: 18, color: isSelected ? c.primary : c.border, marginRight: 12, lineHeight: 22 }}>●</Text>
+                  {/* 日付（大）・時間（小）の2段組み */}
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, fontWeight: "600", color: isSelected ? c.primary : c.foreground }}>
-                      {formatSlotLabel(slot)}
+                    <Text style={{ fontSize: 15, fontWeight: "700", color: isSelected ? c.primary : c.foreground, lineHeight: 20 }}>
+                      {formatSlotDate(slot)}
                     </Text>
+                    <Text style={{ fontSize: 13, color: isSelected ? c.primary : c.muted, marginTop: 2, fontWeight: "500" }}>
+                      {formatSlotTime(slot)}
+                    </Text>
+                  </View>
+                  {/* チェックマーク */}
+                  <View style={[{ width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: "center", justifyContent: "center" }, isSelected ? { backgroundColor: c.primary, borderColor: c.primary } : { borderColor: c.border }]}>
+                    {isSelected && <IconSymbol name="checkmark" size={13} color="#fff" />}
                   </View>
                 </Pressable>
               );
@@ -192,48 +204,8 @@ export default function ResultScreen() {
         <View style={[st.card, { backgroundColor: c.surface, borderColor: c.border }]}>
           <Text style={{ fontSize: 14, fontWeight: "600", color: c.muted, marginBottom: 12 }}>メッセージ設定</Text>
 
-          {/* To / Subject */}
-          <Text style={{ fontSize: 12, color: c.muted, marginBottom: 4 }}>宛先（任意）</Text>
-          <TextInput
-            value={toName}
-            onChangeText={setToName}
-            placeholder="例：田中"
-            placeholderTextColor={c.border}
-            style={[st.input, { color: c.foreground, backgroundColor: c.background, borderColor: c.border }]}
-            returnKeyType="done"
-          />
-
-          <Text style={{ fontSize: 12, color: c.muted, marginBottom: 4, marginTop: 12 }}>件名（任意）</Text>
-          <TextInput
-            value={subject}
-            onChangeText={setSubject}
-            placeholder="例：打ち合わせのご提案"
-            placeholderTextColor={c.border}
-            style={[st.input, { color: c.foreground, backgroundColor: c.background, borderColor: c.border }]}
-            returnKeyType="done"
-          />
-
-          {/* Tone */}
-          <Text style={{ fontSize: 12, color: c.muted, marginBottom: 8, marginTop: 16 }}>敬語レベル</Text>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            {TONE_OPTIONS.map((opt) => (
-              <Pressable
-                key={opt.value}
-                style={({ pressed }) => [
-                  { flex: 1, paddingVertical: 10, borderRadius: 12, borderWidth: 1.5, alignItems: "center" },
-                  tone === opt.value ? { backgroundColor: c.primary, borderColor: c.primary } : { backgroundColor: c.background, borderColor: c.border },
-                  pressed && { opacity: 0.8 },
-                ]}
-                onPress={() => setTone(opt.value)}
-              >
-                <Text style={{ fontSize: 11, fontWeight: "700", color: tone === opt.value ? "#fff" : c.foreground }}>{opt.label}</Text>
-                <Text style={{ fontSize: 10, color: tone === opt.value ? "rgba(255,255,255,0.8)" : c.muted, marginTop: 2 }}>{opt.desc}</Text>
-              </Pressable>
-            ))}
-          </View>
-
-          {/* Format */}
-          <Text style={{ fontSize: 12, color: c.muted, marginBottom: 8, marginTop: 16 }}>フォーマット</Text>
+          {/* Format - 先頭に移動 */}
+          <Text style={{ fontSize: 12, color: c.muted, marginBottom: 8 }}>送る先</Text>
           <View style={{ flexDirection: "row", gap: 8 }}>
             {FORMAT_OPTIONS.map((opt) => (
               <Pressable
@@ -246,10 +218,57 @@ export default function ResultScreen() {
                 onPress={() => setFormat(opt.value)}
               >
                 <Text style={{ fontSize: 11, fontWeight: "700", color: format === opt.value ? "#fff" : c.foreground }}>{opt.label}</Text>
-                <Text style={{ fontSize: 9, color: format === opt.value ? "rgba(255,255,255,0.7)" : c.muted, marginTop: 2 }}>{opt.icon}</Text>
+                <Text style={{ fontSize: 9, color: format === opt.value ? "rgba(255,255,255,0.7)" : c.muted, marginTop: 2 }}>{opt.example}</Text>
               </Pressable>
             ))}
           </View>
+
+          {/* plain以外のみ: 宛先・件名・敬語レベルを表示 */}
+          {format !== "plain" && (
+            <>
+              <Text style={{ fontSize: 12, color: c.muted, marginBottom: 4, marginTop: 16 }}>宛先（任意）</Text>
+              <TextInput
+                value={toName}
+                onChangeText={setToName}
+                placeholder="例：田中"
+                placeholderTextColor={c.border}
+                style={[st.input, { color: c.foreground, backgroundColor: c.background, borderColor: c.border }]}
+                returnKeyType="done"
+              />
+
+              {format === "mail" && (
+                <>
+                  <Text style={{ fontSize: 12, color: c.muted, marginBottom: 4, marginTop: 12 }}>件名（任意）</Text>
+                  <TextInput
+                    value={subject}
+                    onChangeText={setSubject}
+                    placeholder="例：打ち合わせのご提案"
+                    placeholderTextColor={c.border}
+                    style={[st.input, { color: c.foreground, backgroundColor: c.background, borderColor: c.border }]}
+                    returnKeyType="done"
+                  />
+                </>
+              )}
+
+              <Text style={{ fontSize: 12, color: c.muted, marginBottom: 8, marginTop: 16 }}>敬語レベル</Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                {TONE_OPTIONS.map((opt) => (
+                  <Pressable
+                    key={opt.value}
+                    style={({ pressed }) => [
+                      { flex: 1, paddingVertical: 10, borderRadius: 12, borderWidth: 1.5, alignItems: "center" },
+                      tone === opt.value ? { backgroundColor: c.primary, borderColor: c.primary } : { backgroundColor: c.background, borderColor: c.border },
+                      pressed && { opacity: 0.8 },
+                    ]}
+                    onPress={() => setTone(opt.value)}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: tone === opt.value ? "#fff" : c.foreground }}>{opt.label}</Text>
+                    <Text style={{ fontSize: 10, color: tone === opt.value ? "rgba(255,255,255,0.8)" : c.muted, marginTop: 2 }}>{opt.desc}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          )}
         </View>
 
         {/* Generated Message Preview */}

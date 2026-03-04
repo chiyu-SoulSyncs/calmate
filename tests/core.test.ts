@@ -87,12 +87,12 @@ describe("generateMessage", () => {
     durationMinutes: 60,
   };
 
-  it("generates formal message with recipient name", () => {
+  it("generates formal mail message with recipient name", () => {
     const msg = generateMessage({
       slots: [slot],
       toName: "田中",
       toneLevel: "formal",
-      format: "bullet",
+      format: "mail",
       requiredDurationMinutes: 60,
     });
     expect(msg).toContain("田中様");
@@ -100,15 +100,15 @@ describe("generateMessage", () => {
     expect(msg).toContain("3月10日");
   });
 
-  it("generates casual message without recipient name", () => {
+  it("generates casual line message without recipient name", () => {
     const msg = generateMessage({
       slots: [slot],
       toneLevel: "casual",
-      format: "bullet",
+      format: "line",
       requiredDurationMinutes: 60,
     });
     expect(msg).toContain("お疲れ様です");
-    expect(msg).not.toContain("様\n");
+    expect(msg).toContain("📅");
   });
 
   it("generates friendly (tame-guchi) message", () => {
@@ -116,50 +116,40 @@ describe("generateMessage", () => {
       slots: [slot],
       toName: "ゆうき",
       toneLevel: "friendly",
-      format: "bullet",
+      format: "line",
       requiredDurationMinutes: 60,
     });
     expect(msg).toContain("ゆうき");
     expect(msg).not.toContain("お世話になっております");
   });
 
-  it("generates table format", () => {
+  it("generates plain format (no greeting)", () => {
     const msg = generateMessage({
       slots: [slot],
       toneLevel: "formal",
-      format: "table",
+      format: "plain",
       requiredDurationMinutes: 60,
     });
-    expect(msg).toContain("|");
-    expect(msg).toContain("日付");
-  });
-
-  it("generates prose format", () => {
-    const msg = generateMessage({
-      slots: [slot],
-      toneLevel: "formal",
-      format: "prose",
-      requiredDurationMinutes: 60,
-    });
-    expect(msg).toContain("はいかがでしょうか");
+    expect(msg).toContain("●");
+    expect(msg).not.toContain("お世話になっております");
   });
 
   it("returns fallback when no slots", () => {
     const msg = generateMessage({
       slots: [],
       toneLevel: "formal",
-      format: "bullet",
+      format: "mail",
       requiredDurationMinutes: 60,
     });
     expect(msg).toContain("見つかりませんでした");
   });
 
-  it("includes subject when provided with formal tone", () => {
+  it("includes subject in mail format with formal tone", () => {
     const msg = generateMessage({
       slots: [slot],
       subject: "打ち合わせのご提案",
       toneLevel: "formal",
-      format: "bullet",
+      format: "mail",
       requiredDurationMinutes: 60,
     });
     expect(msg).toContain("件名：打ち合わせのご提案");
