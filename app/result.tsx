@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -65,6 +65,8 @@ export default function ResultScreen() {
   const [tone, setTone] = useState<ToneLevel>("formal");
   const [format, setFormat] = useState<MessageFormat>("mail");
   const [copied, setCopied] = useState(false);
+  const [editedMessage, setEditedMessage] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
 
   // 署名情報
   const [sigCompany, setSigCompany] = useState("");
@@ -124,7 +126,7 @@ export default function ResultScreen() {
       ? { company: sigCompany.trim() || undefined, department: sigDept.trim() || undefined, name: sigName.trim() || undefined }
       : undefined;
 
-  const message = generateMessage({
+  const generatedMessage = generateMessage({
     slots: selectedSlotList,
     toName: toName.trim() || undefined,
     subject: subject.trim() || undefined,
@@ -133,6 +135,24 @@ export default function ResultScreen() {
     format,
     requiredDurationMinutes: requiredDuration,
   });
+
+  // 編集中は editedMessage、それ以外は自動生成を使用
+  const message = editedMessage ?? generatedMessage;
+
+  // 設定変更時は編集内容をリセット
+  const prevSettingsRef = useRef({ format, tone, toName, subject, sigCompany, sigDept, sigName });
+  useEffect(() => {
+    const prev = prevSettingsRef.current;
+    if (
+      prev.format !== format || prev.tone !== tone || prev.toName !== toName ||
+      prev.subject !== subject || prev.sigCompany !== sigCompany ||
+      prev.sigDept !== sigDept || prev.sigName !== sigName
+    ) {
+      setEditedMessage(null);
+      setIsEditing(false);
+      prevSettingsRef.current = { format, tone, toName, subject, sigCompany, sigDept, sigName };
+    }
+  }, [format, tone, toName, subject, sigCompany, sigDept, sigName]);
 
   const handleCopy = useCallback(async () => {
     await Clipboard.setStringAsync(message);
@@ -332,8 +352,37 @@ export default function ResultScreen() {
         {/* Generated Message Preview */}
         <View style={[st.card, { backgroundColor: c.surface, borderColor: c.border }]}>
           <View style={[st.row, { justifyContent: "space-between", marginBottom: 12 }]}>
-            <Text style={{ fontSize: 14, fontWeight: "600", color: c.muted }}>生成メッセージ</Text>
+            <View style={st.row}>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: c.muted }}>生成メッセージ</Text>
+              {editedMessage !== null && (
+                <View style={{ marginLeft: 8, backgroundColor: c.warning, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2 }}>
+                  <Text style={{ fontSize: 10, color: "#fff", fontWeight: "700" }}>編集済</Text>
+                </View>
+              )}
+            </View>
             <View style={[st.row, { gap: 8 }]}>
+              <Pressable
+                style={({ pressed }) => [st.row, { gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, backgroundColor: isEditing ? c.primary : c.tealLight }, pressed && { opacity: 0.7 }]}
+                onPress={() => {
+                  if (isEditing) {
+                    setIsEditing(false);
+                  } else {
+                    if (editedMessage === null) setEditedMessage(generatedMessage);
+                    setIsEditing(true);
+                  }
+                }}
+              >
+                <IconSymbol name={isEditing ? "checkmark" : "pencil"} size={14} color={isEditing ? "#fff" : c.primary} />
+                <Text style={{ fontSize: 13, color: isEditing ? "#fff" : c.primary, fontWeight: "600" }}>{isEditing ? "確定" : "編集"}</Text>
+              </Pressable>
+              {editedMessage !== null && !isEditing && (
+                <Pressable
+                  style={({ pressed }) => [{ paddingHorizontal: 8, paddingVertical: 6, borderRadius: 20, backgroundColor: c.tealLight }, pressed && { opacity: 0.7 }]}
+                  onPress={() => { setEditedMessage(null); setIsEditing(false); }}
+                >
+                  <Text style={{ fontSize: 12, color: c.muted }}>リセット</Text>
+                </Pressable>
+              )}
               <Pressable
                 style={({ pressed }) => [st.row, { gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: c.tealLight }, pressed && { opacity: 0.7 }]}
                 onPress={handleShare}
@@ -350,9 +399,22 @@ export default function ResultScreen() {
               </Pressable>
             </View>
           </View>
-          <View style={{ backgroundColor: c.background, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: c.border }}>
-            <Text style={{ fontSize: 14, color: c.foreground, lineHeight: 22 }}>{message}</Text>
-          </View>
+          {isEditing ? (
+            <TextInput
+              value={editedMessage ?? generatedMessage}
+              onChangeText={setEditedMessage}
+              multiline
+              style={[
+                st.input,
+                { color: c.foreground, backgroundColor: c.background, borderColor: c.primary, minHeight: 160, textAlignVertical: "top", lineHeight: 22, fontSize: 14 }
+              ]}
+              autoFocus
+            />
+          ) : (
+            <View style={{ backgroundColor: c.background, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: c.border }}>
+              <Text style={{ fontSize: 14, color: c.foreground, lineHeight: 22 }}>{message}</Text>
+            </View>
+          )}
         </View>
 
       </ScrollView>

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, users, profileCards, InsertProfileCard } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -90,3 +90,28 @@ export async function getUserByOpenId(openId: string) {
 }
 
 // TODO: add feature queries here as your schema grows.
+
+export async function getProfileCards(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(profileCards).where(eq(profileCards.userId, userId));
+}
+
+export async function createProfileCard(data: InsertProfileCard) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(profileCards).values(data);
+  return result[0].insertId;
+}
+
+export async function updateProfileCard(id: number, userId: number, data: Partial<InsertProfileCard>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(profileCards).set(data).where(eq(profileCards.id, id));
+}
+
+export async function deleteProfileCard(id: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(profileCards).where(eq(profileCards.id, id));
+}

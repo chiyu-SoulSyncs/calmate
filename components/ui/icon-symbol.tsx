@@ -60,6 +60,14 @@ const MAPPING = {
   "magnifyingglass": "search",
   "slider.horizontal.3": "tune",
   "calendar.badge.clock": "event-available",
+  // 挨拶文メーカー
+  "bubble.left.and.bubble.right.fill": "forum",
+  "person.badge.plus": "person-add",
+  "hand.wave.fill": "waving-hand",
+  "envelope.fill": "email",
+  "bell.fill": "notifications",
+  "arrow.uturn.right": "reply",
+  "square.and.pencil.circle.fill": "rate-review",
 } as unknown as IconMapping;
 
 /**

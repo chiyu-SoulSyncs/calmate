@@ -26,3 +26,22 @@ export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
 // TODO: Add your tables here
+
+/**
+ * 挨拶文メーカー用プロフィールカード
+ * ユーザーが自分で作成・編集できる名前・会社名・役職の組み合わせカード
+ */
+export const profileCards = mysqlTable("profileCards", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  label: varchar("label", { length: 100 }).notNull(),
+  name: varchar("name", { length: 100 }).notNull(),
+  company: varchar("company", { length: 200 }),
+  role: varchar("role", { length: 100 }),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ProfileCard = typeof profileCards.$inferSelect;
+export type InsertProfileCard = typeof profileCards.$inferInsert;
