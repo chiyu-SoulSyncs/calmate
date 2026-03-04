@@ -186,6 +186,8 @@ export default function GreetingScreen() {
   const [theirAction, setTheirAction] = useState("");
   // 次回案内シーン用: 検索タブから転送された日程テキスト
   const [scheduleText, setScheduleText] = useState("");
+  const [mtgTitle, setMtgTitle] = useState("");
+  const [location, setLocation] = useState("");
 
   // 次回案内シーン選択時に転送データを自動読み込み
   React.useEffect(() => {
@@ -243,6 +245,8 @@ export default function GreetingScreen() {
       profile,
       meeting,
       scheduleText: scene === "next" ? (scheduleText.trim() || undefined) : undefined,
+      mtgTitle: scene === "next" ? (mtgTitle.trim() || undefined) : undefined,
+      location: scene === "next" ? (location.trim() || undefined) : undefined,
       recipientName: recipientName.trim() || undefined,
       includeSignature,
       replyStyle,
@@ -254,7 +258,7 @@ export default function GreetingScreen() {
     setEditedMessage(null);
     setIsEditing(false);
     if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [selectedCard, scene, tone, recipientName, meetingPurpose, meetingDate, meetingTime, meetingUrl, nextAction, theirAction, scheduleText, includeSignature, replyStyle, replySubtype, confirmedDate, newScheduleText]);
+  }, [selectedCard, scene, tone, recipientName, meetingPurpose, meetingDate, meetingTime, meetingUrl, nextAction, theirAction, scheduleText, mtgTitle, location, includeSignature, replyStyle, replySubtype, confirmedDate, newScheduleText]);
 
   const displayMessage = editedMessage ?? generated;
 
@@ -565,9 +569,33 @@ export default function GreetingScreen() {
           </View>
         )}
 
-        {/* 次回案内シーン: 日程貼り付けエリア */}
+        {/* 次回案内シーン: MTGタイトル・場所/URL・日程貼り付けエリア */}
         {scene === "next" && (
           <View style={[st.card, { backgroundColor: c.surface, borderColor: c.border, gap: 10 }]}>
+            {/* MTGタイトル */}
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 14, fontWeight: "700", color: c.foreground }}>MTGタイトル（任意）</Text>
+              <TextInput
+                value={mtgTitle}
+                onChangeText={setMtgTitle}
+                placeholder="例: 〇〇についての打ち合わせ"
+                placeholderTextColor={c.muted}
+                returnKeyType="done"
+                style={[st.input, { color: c.foreground, backgroundColor: c.background, borderColor: c.border }]}
+              />
+            </View>
+            {/* 場所/URL */}
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 14, fontWeight: "700", color: c.foreground }}>場所 / URL（任意）</Text>
+              <TextInput
+                value={location}
+                onChangeText={setLocation}
+                placeholder="例: Zoom https://zoom.us/... または 〇〇会議室"
+                placeholderTextColor={c.muted}
+                returnKeyType="done"
+                style={[st.input, { color: c.foreground, backgroundColor: c.background, borderColor: c.border }]}
+              />
+            </View>
             <View style={[st.row, { justifyContent: "space-between" }]}>
               <View>
                 <Text style={{ fontSize: 14, fontWeight: "700", color: c.foreground }}>日程候補</Text>
