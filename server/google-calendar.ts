@@ -7,6 +7,7 @@ const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI ||
 
 const SCOPES = [
   "https://www.googleapis.com/auth/calendar.readonly",
+  "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/userinfo.email",
 ].join(" ");
 
@@ -291,5 +292,93 @@ export function registerGoogleCalendarRoutes(app: Express) {
     const { userId } = req.body;
     if (userId) tokenStore.delete(userId);
     res.json({ success: true });
+  });
+
+  // Create a calendar event (仮予定登録)
+  app.post("/api/google/events/create", async (req: Request, res: Response) => {
+    const { userId, calendarId = "primary", title, startIso, endIso, description } = req.body;
+
+    if (!userId || !startIso || !endIso) {
+      res.status(400).json({ error: "userId, startIso, endIso required" });
+      return;
+    }
+
+    const accessToken = await getValidAccessToken(userId);
+    if (!accessToken) {
+      res.status(401).json({ error: "Google not connected", needsAuth: true });
+      return;
+    }
+
+    try {
+      const event = {
+        summary: title || "【仮】打ち合わせ",
+        description: description || "スケジュールアシスタントから登録した仮予定です。",
+        start: { dateTime: startIso, timeZone: "Asia/Tokyo" },
+        end: { dateTime: endIso, timeZone: "Asia/Tokyo" },
+        status: "tentative",
+      };
+
+      const createRes = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(event),
+        }
+      );
+
+      if (!createRes.ok) {
+        const err = await createRes.text();
+        console.error("[Google Calendar] Create event error:", err);
+        res.status(createRes.status).json({ error: "Failed to create event" });
+        return;
+      }
+
+      const created = await createRes.json();
+      res.json({ success: true, eventId: created.id, htmlLink: created.htmlLink });
+    } catch (error) {
+      console.error("[Google Calendar] Create event error:", error);
+      res.status(500).json({ error: "Failed to create event" });
+    }
+  });
+
+  // Delete a calendar event (仮予定削除)
+  app.delete("/api/google/events/:eventId", async (req: Request, res: Response) => {
+    const { userId, calendarId = "primary" } = req.query as Record<string, string>;
+    const { eventId } = req.params;
+
+    if (!userId || !eventId) {
+      res.status(400).json({ error: "userId and eventId required" });
+      return;
+    }
+
+    const accessToken = await getValidAccessToken(userId);
+    if (!accessToken) {
+      res.status(401).json({ error: "Google not connected", needsAuth: true });
+      return;
+    }
+
+    try {
+      const delRes = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
+      );
+
+      if (!delRes.ok && delRes.status !== 204 && delRes.status !== 410) {
+        res.status(delRes.status).json({ error: "Failed to delete event" });
+        return;
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[Google Calendar] Delete event error:", error);
+      res.status(500).json({ error: "Failed to delete event" });
+    }
   });
 }

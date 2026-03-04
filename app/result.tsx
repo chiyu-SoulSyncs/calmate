@@ -10,6 +10,7 @@ import {
   Alert,
   Modal,
   FlatList,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as Clipboard from "expo-clipboard";
@@ -27,6 +28,7 @@ import {
   deleteTemplate,
   type MessageTemplate,
 } from "@/lib/exclusion-settings";
+import { useAuthContext } from "@/lib/auth-context";
 
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -73,6 +75,11 @@ function genId() {
 export default function ResultScreen() {
   const colors = useColors();
   const router = useRouter();
+  const { user } = useAuthContext();
+
+  // 仮予定登録: slotIndex -> eventId
+  const [tentativeEvents, setTentativeEvents] = useState<Record<number, string>>({});
+  const [registeringSlot, setRegisteringSlot] = useState<number | null>(null);
 
   const [slots, setSlots] = useState<FreeSlot[]>([]);
   const [selectedSlots, setSelectedSlots] = useState<Set<number>>(new Set());
@@ -130,6 +137,78 @@ export default function ResultScreen() {
       } catch {}
     });
   }, []);
+
+  // 仮予定として登録
+  const handleRegisterTentative = useCallback(async (idx: number, slot: FreeSlot) => {
+    if (!user) {
+      Alert.alert("ログインが必要です", "仮予定を登録するにはログインしてください。");
+      return;
+    }
+    setRegisteringSlot(idx);
+    try {
+      const API_BASE = process.env.EXPO_PUBLIC_API_URL || "http://127.0.0.1:3000";
+      const res = await fetch(`${API_BASE}/api/google/events/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: user.id,
+          title: "【仮】打ち合わせ",
+          startIso: slot.start.toISOString(),
+          endIso: slot.end.toISOString(),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTentativeEvents((prev) => ({ ...prev, [idx]: data.eventId }));
+        if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert("登録しました", "Googleカレンダーに仮予定を登録しました。");
+      } else if (data.needsAuth) {
+        Alert.alert("Googleカレンダー未連携", "設定画面からGoogleカレンダーを連携してください。");
+      } else {
+        Alert.alert("エラー", "仮予定の登録に失敗しました。");
+      }
+    } catch {
+      Alert.alert("エラー", "サーバーに接続できませんでした。");
+    } finally {
+      setRegisteringSlot(null);
+    }
+  }, [user]);
+
+  // 仮予定を削除
+  const handleDeleteTentative = useCallback(async (idx: number) => {
+    const eventId = tentativeEvents[idx];
+    if (!eventId || !user) return;
+    const doDelete = async () => {
+      try {
+        const API_BASE = process.env.EXPO_PUBLIC_API_URL || "http://127.0.0.1:3000";
+        const res = await fetch(
+          `${API_BASE}/api/google/events/${encodeURIComponent(eventId)}?userId=${encodeURIComponent(user.id)}`,
+          { method: "DELETE" }
+        );
+        const data = await res.json();
+        if (data.success) {
+          setTentativeEvents((prev) => {
+            const next = { ...prev };
+            delete next[idx];
+            return next;
+          });
+          if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        } else {
+          Alert.alert("エラー", "仮予定の削除に失敗しました。");
+        }
+      } catch {
+        Alert.alert("エラー", "サーバーに接続できませんでした。");
+      }
+    };
+    if (Platform.OS === "web") {
+      if (window.confirm("この仮予定をGoogleカレンダーから削除しますか？")) doDelete();
+    } else {
+      Alert.alert("仮予定を削除", "Googleカレンダーから仮予定を削除しますか？", [
+        { text: "キャンセル", style: "cancel" },
+        { text: "削除", style: "destructive", onPress: doDelete },
+      ]);
+    }
+  }, [tentativeEvents, user]);
 
   const toggleSlot = useCallback((idx: number) => {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -310,29 +389,64 @@ export default function ResultScreen() {
             slots.map((slot, i) => {
               const isSelected = selectedSlots.has(i);
               return (
-                <Pressable
-                  key={i}
-                  style={({ pressed }) => [
-                    st.row,
-                    { paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14, marginBottom: 8, borderWidth: 1.5 },
-                    isSelected ? { backgroundColor: c.tealLight, borderColor: c.primary } : { backgroundColor: c.background, borderColor: c.border },
-                    pressed && { opacity: 0.8 },
-                  ]}
-                  onPress={() => toggleSlot(i)}
-                >
-                  <Text style={{ fontSize: 18, color: isSelected ? c.primary : c.border, marginRight: 12, lineHeight: 22 }}>●</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 15, fontWeight: "700", color: isSelected ? c.primary : c.foreground, lineHeight: 20 }}>
-                      {formatSlotDate(slot)}
-                    </Text>
-                    <Text style={{ fontSize: 13, color: isSelected ? c.primary : c.muted, marginTop: 2, fontWeight: "500" }}>
-                      {formatSlotTime(slot)}
-                    </Text>
+                <View key={i} style={{ marginBottom: 8 }}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      st.row,
+                      { paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14, borderWidth: 1.5 },
+                      isSelected ? { backgroundColor: c.tealLight, borderColor: c.primary } : { backgroundColor: c.background, borderColor: c.border },
+                      pressed && { opacity: 0.8 },
+                    ]}
+                    onPress={() => toggleSlot(i)}
+                  >
+                    <Text style={{ fontSize: 18, color: isSelected ? c.primary : c.border, marginRight: 12, lineHeight: 22 }}>●</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 15, fontWeight: "700", color: isSelected ? c.primary : c.foreground, lineHeight: 20 }}>
+                        {formatSlotDate(slot)}
+                      </Text>
+                      <Text style={{ fontSize: 13, color: isSelected ? c.primary : c.muted, marginTop: 2, fontWeight: "500" }}>
+                        {formatSlotTime(slot)}
+                      </Text>
+                    </View>
+                    <View style={[{ width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: "center", justifyContent: "center" }, isSelected ? { backgroundColor: c.primary, borderColor: c.primary } : { borderColor: c.border }]}>
+                      {isSelected && <IconSymbol name="checkmark" size={13} color="#fff" />}
+                    </View>
+                  </Pressable>
+                  {/* 仮予定登録ボタン */}
+                  <View style={{ flexDirection: "row", marginTop: 4, marginLeft: 4 }}>
+                    {tentativeEvents[i] ? (
+                      <Pressable
+                        style={({ pressed }) => [{
+                          flexDirection: "row", alignItems: "center", gap: 4,
+                          paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20,
+                          backgroundColor: c.success + "22",
+                        }, pressed && { opacity: 0.7 }]}
+                        onPress={() => handleDeleteTentative(i)}
+                      >
+                        <IconSymbol name="checkmark.circle.fill" size={13} color={c.success} />
+                        <Text style={{ fontSize: 11, color: c.success, fontWeight: "700" }}>仮予定登録済</Text>
+                        <Text style={{ fontSize: 10, color: c.muted }}>（タップで削除）</Text>
+                      </Pressable>
+                    ) : (
+                      <Pressable
+                        style={({ pressed }) => [{
+                          flexDirection: "row", alignItems: "center", gap: 4,
+                          paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20,
+                          backgroundColor: c.tealLight,
+                        }, pressed && { opacity: 0.7 }]}
+                        onPress={() => handleRegisterTentative(i, slot)}
+                        disabled={registeringSlot === i}
+                      >
+                        {registeringSlot === i ? (
+                          <ActivityIndicator size={12} color={c.primary} />
+                        ) : (
+                          <IconSymbol name="calendar.badge.plus" size={13} color={c.primary} />
+                        )}
+                        <Text style={{ fontSize: 11, color: c.primary, fontWeight: "600" }}>仮予定登録</Text>
+                      </Pressable>
+                    )}
                   </View>
-                  <View style={[{ width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: "center", justifyContent: "center" }, isSelected ? { backgroundColor: c.primary, borderColor: c.primary } : { borderColor: c.border }]}>
-                    {isSelected && <IconSymbol name="checkmark" size={13} color="#fff" />}
-                  </View>
-                </Pressable>
+                </View>
               );
             })
           )}
