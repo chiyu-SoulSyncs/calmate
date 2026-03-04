@@ -24,6 +24,7 @@ import {
   type GreetingTone,
   type ProfileCard,
   type MeetingInfo,
+  type ReplyStyle,
 } from "@/lib/greeting-generator";
 
 // ─────────────────────────────────────────────
@@ -173,6 +174,10 @@ export default function GreetingScreen() {
   const [nextAction, setNextAction] = useState("");
   const [theirAction, setTheirAction] = useState("");
 
+  // 署名・返信スタイル
+  const [includeSignature, setIncludeSignature] = useState(true);
+  const [replyStyle, setReplyStyle] = useState<ReplyStyle>("kashikomarimashita");
+
   // 生成メッセージ
   const [generated, setGenerated] = useState<string | null>(null);
   const [editedMessage, setEditedMessage] = useState<string | null>(null);
@@ -207,6 +212,8 @@ export default function GreetingScreen() {
       profile,
       meeting,
       recipientName: recipientName.trim() || undefined,
+      includeSignature,
+      replyStyle,
     });
     setGenerated(msg);
     setEditedMessage(null);
@@ -348,6 +355,56 @@ export default function GreetingScreen() {
               );
             })}
           </View>
+        </View>
+
+        {/* 署名・返信スタイル設定 */}
+        <View style={[st.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+          {/* 署名ON/OFF */}
+          <View style={[st.row, { justifyContent: "space-between", marginBottom: includeSignature ? 14 : 0 }]}>
+            <View>
+              <Text style={{ fontSize: 14, fontWeight: "700", color: c.foreground }}>署名を含める</Text>
+              <Text style={{ fontSize: 12, color: c.muted, marginTop: 2 }}>プロフィールカードの情報を末尾に追加</Text>
+            </View>
+            <Pressable
+              style={({ pressed }) => [{
+                width: 50, height: 28, borderRadius: 14,
+                backgroundColor: includeSignature ? c.primary : c.border,
+                justifyContent: "center",
+                paddingHorizontal: 3,
+              }, pressed && { opacity: 0.8 }]}
+              onPress={() => setIncludeSignature(v => !v)}
+            >
+              <View style={{
+                width: 22, height: 22, borderRadius: 11, backgroundColor: "#fff",
+                alignSelf: includeSignature ? "flex-end" : "flex-start",
+              }} />
+            </Pressable>
+          </View>
+
+          {/* 返信スタイル（replyシーンのみ） */}
+          {scene === "reply" && (
+            <View style={{ marginTop: includeSignature ? 0 : 0 }}>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: c.foreground, marginBottom: 8 }}>返信スタイル</Text>
+              <View style={[st.row, { gap: 8 }]}>
+                {(["kashikomarimashita", "shochishimashita"] as const).map((style) => (
+                  <Pressable
+                    key={style}
+                    style={({ pressed }) => [{
+                      flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: "center",
+                      borderWidth: 2,
+                      borderColor: replyStyle === style ? c.primary : c.border,
+                      backgroundColor: replyStyle === style ? c.primary : c.background,
+                    }, pressed && { opacity: 0.7 }]}
+                    onPress={() => setReplyStyle(style)}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: replyStyle === style ? "#fff" : c.muted }}>
+                      {style === "kashikomarimashita" ? "かしこまりました" : "承知いたしました"}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
         </View>
 
         {/* 追加入力（シーン依存） */}

@@ -17,7 +17,7 @@ import { loadPresets, savePreset, deletePreset, createDefaultPreset, type Preset
 import type { SearchSettings } from "@/lib/google-calendar";
 
 const TONE_LABELS = { formal: "ビジネス丁寧語", casual: "カジュアル", friendly: "タメ口" };
-const FORMAT_LABELS = { bullet: "箇条書き", table: "表形式", prose: "文章" };
+const FORMAT_LABELS = { line: "LINEで送る", mail: "メールで送る", plain: "そのままコピー" };
 const TIME_LABELS = { business: "営業時間(9-18時)", custom: "時間外OK(〜21時)", allday: "終日" };
 
 function durationLabel(min: number) {
@@ -233,7 +233,7 @@ export default function PresetsScreen() {
 
             <Text style={{ fontSize: 12, color: c.muted, marginTop: 14, marginBottom: 8 }}>フォーマット</Text>
             <View style={{ flexDirection: "row", gap: 8 }}>
-              {(["bullet", "table", "prose"] as const).map((f) => (
+              {(["line", "mail", "plain"] as const).map((f) => (
                 <Pressable
                   key={f}
                   style={({ pressed }) => [{ flex: 1, paddingVertical: 8, borderRadius: 10, borderWidth: 1.5, alignItems: "center" }, editingPreset.messageFormat === f ? { backgroundColor: c.primary, borderColor: c.primary } : { backgroundColor: c.background, borderColor: c.border }, pressed && { opacity: 0.8 }]}

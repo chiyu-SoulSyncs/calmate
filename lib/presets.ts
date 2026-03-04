@@ -8,7 +8,7 @@ export interface Preset {
   name: string;
   settings: SearchSettings;
   toneLevel: "formal" | "casual" | "friendly";
-  messageFormat: "bullet" | "table" | "prose";
+  messageFormat: "line" | "mail" | "plain";
   maxCandidates: number;
   createdAt: number;
 }
@@ -56,7 +56,7 @@ export function createDefaultPreset(name: string): Preset {
       startStepMinutes: 30,
     },
     toneLevel: "formal",
-    messageFormat: "bullet",
+    messageFormat: "mail",
     maxCandidates: 5,
     createdAt: Date.now(),
   };

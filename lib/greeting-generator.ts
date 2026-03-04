@@ -1,24 +1,25 @@
 /**
  * 挨拶文メーカー - メッセージ生成ロジック
  *
- * 日本のビジネスメールの正しい構成:
- *   1. 宛名（会社名 → 部署名 → 役職 → 氏名＋様）
+ * 日本のビジネスメール/メッセージの正しい構成:
+ *   1. 宛名（任意）
  *   2. 本文（挨拶 → 要件 → 詳細）
  *   3. 結びの言葉
- *   4. 署名区切り線（-- または ────）
- *   5. 署名（会社名 → 部署名 → 役職 → 氏名）の順
- *      ※ 肩書き（役職）は氏名の前に置くのが正式
+ *   4. 署名（任意・ON/OFF切り替え可能）
+ *      順序: 会社名 → 役職 → 氏名
  *
  * シーン:
  *   - intro       : グループ参加の自己紹介
  *   - thanks      : ミーティングお礼
  *   - reminder    : ミーティングリマインド
  *   - next        : 次回案内（日程調整依頼）
- *   - reply       : 返信（かしこまりました系）
+ *   - reply       : 返信（かしこまりました / 承知しました）
  */
 
 export type GreetingScene = "intro" | "thanks" | "reminder" | "next" | "reply";
 export type GreetingTone = "formal" | "casual" | "friendly";
+/** 返信文の種類 */
+export type ReplyStyle = "kashikomarimashita" | "shochishimashita";
 
 export interface ProfileCard {
   id: number;
@@ -49,6 +50,10 @@ export interface GenerateGreetingOptions {
   meeting?: MeetingInfo;
   slots?: GreetingSlot[];
   recipientName?: string;
+  /** 署名を末尾に付けるかどうか（デフォルト: true） */
+  includeSignature?: boolean;
+  /** 返信文のスタイル（replyシーンのみ使用） */
+  replyStyle?: ReplyStyle;
 }
 
 // ─────────────────────────────────────────────
@@ -56,38 +61,34 @@ export interface GenerateGreetingOptions {
 // ─────────────────────────────────────────────
 
 /**
- * 日本のビジネスメール署名の正しい順序:
+ * 日本のビジネスメッセージ署名の正しい順序:
  *   会社名
- *   部署名・役職名（肩書き）
+ *   役職（肩書き）
  *   氏名
  *
- * 例:
- *   株式会社○○
- *   営業部 マネージャー
- *   田中 太郎
+ * 区切り線なし（LINEやチャットでも使いやすい形式）
  */
 function signature(profile: ProfileCard, tone: GreetingTone): string {
   if (tone === "friendly") {
-    // タメ口：署名区切りなし、名前のみ
     return profile.name;
   }
-
   const lines: string[] = [];
-  // 1. 会社名（最上位）
   if (profile.company) lines.push(profile.company);
-  // 2. 役職・肩書き（氏名の前）
   if (profile.role) lines.push(profile.role);
-  // 3. 氏名（最後）
   lines.push(profile.name);
+  return lines.join("\n");
+}
 
-  // 署名区切り線付き
-  return `────────────────\n${lines.join("\n")}`;
+function maybeSignature(profile: ProfileCard, tone: GreetingTone, include: boolean): string {
+  if (!include) return "";
+  return `\n\n${signature(profile, tone)}`;
 }
 
 /**
  * 本文冒頭の挨拶文
- * 正式なビジネスメールでは「お世話になっております。」の後に
- * 「会社名の氏名です。」と名乗るのが正式
+ * ビジネス: 「お世話になっております。会社名の氏名でございます。」
+ * カジュアル: 「お疲れ様です。会社名の氏名です。」
+ * タメ口: 「お疲れ〜！名前だよ。」
  */
 function openingGreeting(tone: GreetingTone, company: string, name: string): string {
   if (tone === "formal") {
@@ -98,8 +99,16 @@ function openingGreeting(tone: GreetingTone, company: string, name: string): str
     const companyStr = company ? `${company}の` : "";
     return `お疲れ様です。\n${companyStr}${name}です。`;
   }
-  // friendly
   return `お疲れ〜！\n${name}だよ。`;
+}
+
+/**
+ * LINEやチャット向けの短い挨拶（自己紹介なし）
+ */
+function shortGreeting(tone: GreetingTone): string {
+  if (tone === "formal") return "お世話になっております。";
+  if (tone === "casual") return "お疲れ様です！";
+  return "お疲れ〜！";
 }
 
 function closing(tone: GreetingTone): string {
@@ -121,31 +130,32 @@ function meetingBlock(meeting: MeetingInfo): string {
 // ─────────────────────────────────────────────
 
 function buildIntro(opts: GenerateGreetingOptions): string {
-  const { profile, tone, recipientName } = opts;
+  const { profile, tone, recipientName, includeSignature = true } = opts;
   const company = profile.company ?? "";
   const name = profile.name;
-  // 役職は自己紹介時に本文中に入れる（「○○部 マネージャーの田中です」形式）
   const roleStr = profile.role ? `${profile.role}の` : "";
+  const sig = maybeSignature(profile, tone, includeSignature);
 
   if (tone === "formal") {
     const to = recipientName ? `${recipientName}の皆様\n\n` : "";
-    return `${to}はじめまして。\n${company}、${roleStr}${name}と申します。\n\nこれからどうぞよろしくお願いいたします。\n\n${signature(profile, tone)}`;
+    return `${to}はじめまして。\n${company ? `${company}、` : ""}${roleStr}${name}と申します。\n\nこれからどうぞよろしくお願いいたします。${sig}`;
   }
   if (tone === "casual") {
     const to = recipientName ? `${recipientName}の皆さん\n\n` : "";
-    return `${to}はじめまして！\n${company}、${roleStr}${name}です。\n\nよろしくお願いします！\n\n${signature(profile, tone)}`;
+    return `${to}はじめまして！\n${company ? `${company}、` : ""}${roleStr}${name}です。\n\nよろしくお願いします！${sig}`;
   }
-  // friendly
-  return `はじめまして〜！\n${roleStr}${name}です。\nよろしくね！\n\n${signature(profile, tone)}`;
+  return `はじめまして〜！\n${roleStr}${name}です。\nよろしくね！${sig}`;
 }
 
 function buildThanks(opts: GenerateGreetingOptions): string {
-  const { profile, tone, meeting } = opts;
+  const { profile, tone, meeting, includeSignature = true } = opts;
   const company = profile.company ?? "";
   const name = profile.name;
-  const greet = openingGreeting(tone, company, name);
+  const sig = maybeSignature(profile, tone, includeSignature);
 
   if (tone === "formal") {
+    // ビジネス丁寧語：冒頭に自己紹介あり
+    const greet = openingGreeting(tone, company, name);
     let body = `${greet}\n\n本日は、お打ち合わせのお時間をいただき、誠にありがとうございました。\n打ち合わせで決まった内容を以下にまとめましたので、ご確認いただけますと幸いです。`;
     if (meeting) {
       const block = meetingBlock(meeting);
@@ -153,10 +163,12 @@ function buildThanks(opts: GenerateGreetingOptions): string {
       if (meeting.nextAction) body += `\n\n【弊社で対応する事】\n${meeting.nextAction}`;
       if (meeting.theirAction) body += `\n\n【貴社にご対応頂きたいこと】\n▼下記のご対応をお願いいたします。\n${meeting.theirAction}`;
     }
-    body += `\n\nその他、ご不明な点やご要望などございましたら、何なりとお申し付けくださいませ。\n${closing(tone)}\n\n${signature(profile, tone)}`;
+    body += `\n\nその他、ご不明な点やご要望などございましたら、何なりとお申し付けくださいませ。\n${closing(tone)}${sig}`;
     return body;
   }
   if (tone === "casual") {
+    // カジュアル：LINEでも使いやすい短い挨拶（自己紹介なし）
+    const greet = shortGreeting(tone);
     let body = `${greet}\n\n本日はお打ち合わせありがとうございました！`;
     if (meeting) {
       const block = meetingBlock(meeting);
@@ -164,21 +176,22 @@ function buildThanks(opts: GenerateGreetingOptions): string {
       if (meeting.nextAction) body += `\n\n【弊社対応】\n${meeting.nextAction}`;
       if (meeting.theirAction) body += `\n\n【ご対応お願いしたいこと】\n${meeting.theirAction}`;
     }
-    body += `\n\n${closing(tone)}\n\n${signature(profile, tone)}`;
+    body += `\n\n${closing(tone)}${sig}`;
     return body;
   }
-  // friendly
+  // タメ口：LINEでも使いやすい短い形式（自己紹介なし）
   let body = `さっきはありがとう！`;
   if (meeting?.nextAction) body += `\n\n【やること】\n${meeting.nextAction}`;
-  body += `\n\n${closing(tone)}\n\n${signature(profile, tone)}`;
+  body += `\n\n${closing(tone)}${sig}`;
   return body;
 }
 
 function buildReminder(opts: GenerateGreetingOptions): string {
-  const { profile, tone, meeting } = opts;
+  const { profile, tone, meeting, includeSignature = true } = opts;
   const company = profile.company ?? "";
   const name = profile.name;
   const greet = openingGreeting(tone, company, name);
+  const sig = maybeSignature(profile, tone, includeSignature);
 
   if (tone === "formal") {
     let body = `${greet}\n\n次回のお打ち合わせについて、下記の通りご連絡申し上げます。`;
@@ -186,7 +199,7 @@ function buildReminder(opts: GenerateGreetingOptions): string {
       const block = meetingBlock(meeting);
       if (block) body += `\n\n${block}`;
     }
-    body += `\n\nご不明点やご質問等ございましたら、お気軽にお申し付けくださいませ。\n${closing(tone)}\n\n${signature(profile, tone)}`;
+    body += `\n\nご不明点やご質問等ございましたら、お気軽にお申し付けくださいませ。\n${closing(tone)}${sig}`;
     return body;
   }
   if (tone === "casual") {
@@ -195,49 +208,53 @@ function buildReminder(opts: GenerateGreetingOptions): string {
       const block = meetingBlock(meeting);
       if (block) body += `\n\n${block}`;
     }
-    body += `\n\n${closing(tone)}\n\n${signature(profile, tone)}`;
+    body += `\n\n${closing(tone)}${sig}`;
     return body;
   }
-  // friendly
   let body = `次回の打ち合わせの件！`;
   if (meeting) {
     if (meeting.date && meeting.time) body += `\n● ${meeting.date}⋅${meeting.time}`;
     if (meeting.url) body += `\n🔗 ${meeting.url}`;
   }
-  body += `\n\n${closing(tone)}\n\n${signature(profile, tone)}`;
+  body += `\n\n${closing(tone)}${sig}`;
   return body;
 }
 
 function buildNext(opts: GenerateGreetingOptions): string {
-  const { profile, tone, slots } = opts;
+  const { profile, tone, slots, includeSignature = true } = opts;
   const company = profile.company ?? "";
   const name = profile.name;
   const greet = openingGreeting(tone, company, name);
+  const sig = maybeSignature(profile, tone, includeSignature);
 
   const slotsText = slots && slots.length > 0
     ? slots.map(s => `● ${s.date}⋅${s.time}`).join("\n")
     : "（日程を選択してください）";
 
   if (tone === "formal") {
-    return `${greet}\n\n次回のお打ち合わせ日程を設定させていただきたく、ご連絡いたしました。\n\n以下の日時でご都合のよいお時間はございますでしょうか。\nお手数ですが、ご確認いただけますと幸いです。\n\n${slotsText}\n\nその他、ご不明点やご要望などございましたら、何なりとお申し付けくださいませ。\n${closing(tone)}\n\n${signature(profile, tone)}`;
+    return `${greet}\n\n次回のお打ち合わせ日程を設定させていただきたく、ご連絡いたしました。\n\n以下の日時でご都合のよいお時間はございますでしょうか。\nお手数ですが、ご確認いただけますと幸いです。\n\n${slotsText}\n\nその他、ご不明点やご要望などございましたら、何なりとお申し付けくださいませ。\n${closing(tone)}${sig}`;
   }
   if (tone === "casual") {
-    return `${greet}\n\n次回の打ち合わせ日程についてご連絡です！\n\n以下の日程でご都合はいかがでしょうか？\n\n${slotsText}\n\nご確認よろしくお願いします！\n\n${signature(profile, tone)}`;
+    return `${greet}\n\n次回の打ち合わせ日程についてご連絡です！\n\n以下の日程でご都合はいかがでしょうか？\n\n${slotsText}\n\nご確認よろしくお願いします！${sig}`;
   }
-  // friendly
-  return `次回の日程なんだけど、どれかいける？\n\n${slotsText}\n\n${closing(tone)}\n\n${signature(profile, tone)}`;
+  return `次回の日程なんだけど、どれかいける？\n\n${slotsText}\n\n${closing(tone)}${sig}`;
 }
 
 function buildReply(opts: GenerateGreetingOptions): string {
-  const { profile, tone } = opts;
+  const { profile, tone, replyStyle = "kashikomarimashita", includeSignature = true } = opts;
+  const sig = maybeSignature(profile, tone, includeSignature);
+
+  // 返信文の種類に応じた文言
+  const ack = replyStyle === "shochishimashita" ? "承知しました。" : "かしこまりました。";
+  const ackCasual = replyStyle === "shochishimashita" ? "承知しました！" : "了解しました！";
 
   if (tone === "formal") {
-    return `ご連絡ありがとうございます。\nかしこまりました。\n次回日程につきまして、改めてご連絡させていただきます。\n引き続きよろしくお願いいたします。\n\n${signature(profile, tone)}`;
+    return `ご連絡ありがとうございます。\n${ack}\n次回日程につきまして、改めてご連絡させていただきます。\n引き続きよろしくお願いいたします。${sig}`;
   }
   if (tone === "casual") {
-    return `ご連絡ありがとうございます！\n了解しました。\nまたご連絡しますね。\n引き続きよろしくお願いします！\n\n${signature(profile, tone)}`;
+    return `ご連絡ありがとうございます！\n${ackCasual}\nまたご連絡しますね。\n引き続きよろしくお願いします！${sig}`;
   }
-  return `了解〜！\nまた連絡するね。\n\n${signature(profile, tone)}`;
+  return `了解〜！\nまた連絡するね。${sig}`;
 }
 
 // ─────────────────────────────────────────────
