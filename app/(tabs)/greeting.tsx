@@ -50,13 +50,14 @@ const TONES: { id: GreetingTone; label: string }[] = [
 
 interface CardEditorProps {
   visible: boolean;
+  isEditing?: boolean;
   initial?: { label: string; name: string; company: string; role: string };
   onSave: (data: { label: string; name: string; company: string; role: string }) => void;
   onCancel: () => void;
   colors: ReturnType<typeof useColors>;
 }
 
-function CardEditor({ visible, initial, onSave, onCancel, colors: c }: CardEditorProps) {
+function CardEditor({ visible, isEditing, initial, onSave, onCancel, colors: c }: CardEditorProps) {
   const [label, setLabel] = useState(initial?.label ?? "");
   const [name, setName] = useState(initial?.name ?? "");
   const [company, setCompany] = useState(initial?.company ?? "");
@@ -77,7 +78,7 @@ function CardEditor({ visible, initial, onSave, onCancel, colors: c }: CardEdito
           <Pressable style={({ pressed }) => [pressed && { opacity: 0.6 }]} onPress={onCancel}>
             <Text style={{ fontSize: 16, color: c.muted }}>キャンセル</Text>
           </Pressable>
-          <Text style={{ fontSize: 17, fontWeight: "700", color: c.foreground }}>プロフィールカード</Text>
+          <Text style={{ fontSize: 17, fontWeight: "700", color: c.foreground }}>{isEditing ? "カードを編集" : "カードを追加"}</Text>
           <Pressable
             style={({ pressed }) => [pressed && { opacity: 0.6 }]}
             onPress={() => {
@@ -152,6 +153,7 @@ export default function GreetingScreen() {
     { enabled: !!user }
   );
   const createCard = trpc.profileCards.create.useMutation({ onSuccess: () => refetchCards() });
+  const updateCard = trpc.profileCards.update.useMutation({ onSuccess: () => refetchCards() });
   const deleteCard = trpc.profileCards.delete.useMutation({ onSuccess: () => refetchCards() });
 
   const [selectedCardId, setSelectedCardId] = useState<number | null>(null);
@@ -279,8 +281,9 @@ export default function GreetingScreen() {
                       }, pressed && { opacity: 0.7 }]}
                       onPress={() => setSelectedCardId(card.id)}
                       onLongPress={() => {
-                        Alert.alert(card.label, "このカードを削除しますか？", [
+                        Alert.alert(card.label, "カードを編集または削除できます", [
                           { text: "キャンセル", style: "cancel" },
+                          { text: "編集", onPress: () => { setEditingCard(card); setEditorVisible(true); } },
                           { text: "削除", style: "destructive", onPress: () => deleteCard.mutate({ id: card.id }) },
                         ]);
                       }}
@@ -481,10 +484,16 @@ export default function GreetingScreen() {
       {/* プロフィールカード編集モーダル */}
       <CardEditor
         visible={editorVisible}
+        isEditing={!!editingCard}
         initial={editingCard ? { label: editingCard.label, name: editingCard.name, company: editingCard.company ?? "", role: editingCard.role ?? "" } : undefined}
-        onCancel={() => setEditorVisible(false)}
+        onCancel={() => { setEditorVisible(false); setEditingCard(null); }}
         onSave={(data) => {
-          createCard.mutate({ ...data, sortOrder: cards.length });
+          if (editingCard) {
+            updateCard.mutate({ id: editingCard.id, ...data });
+          } else {
+            createCard.mutate({ ...data, sortOrder: cards.length });
+          }
+          setEditingCard(null);
           setEditorVisible(false);
         }}
         colors={c}
