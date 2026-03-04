@@ -70,7 +70,7 @@ const GREETINGS: Record<ToneLevel, (toName?: string) => string> = {
 const CLOSINGS: Record<ToneLevel, string> = {
   formal: "ご確認のほど、よろしくお願いいたします。",
   casual: "ご確認よろしくお願いします！",
-  friendly: "確認してみて！",
+  friendly: "",
 };
 
 const DURATION_LABELS: Record<ToneLevel, (min: number) => string> = {
