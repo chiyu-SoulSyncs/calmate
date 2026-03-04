@@ -71,6 +71,8 @@ const MAPPING = {
   // 返信シーン分岐
   "hand.raised.fill": "back-hand",
   "arrow.triangle.2.circlepath": "sync",
+  "mappin": "place",
+  "mappin.circle.fill": "place",
 } as unknown as IconMapping;
 
 /**

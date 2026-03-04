@@ -188,6 +188,8 @@ export default function GreetingScreen() {
   const [scheduleText, setScheduleText] = useState("");
   const [mtgTitle, setMtgTitle] = useState("");
   const [location, setLocation] = useState("");
+  const [reminderTitle, setReminderTitle] = useState("");
+  const [reminderLocation, setReminderLocation] = useState("");
 
   // 次回案内シーン選択時に転送データを自動読み込み
   React.useEffect(() => {
@@ -246,7 +248,8 @@ export default function GreetingScreen() {
       meeting,
       scheduleText: scene === "next" ? (scheduleText.trim() || undefined) : undefined,
       mtgTitle: scene === "next" ? (mtgTitle.trim() || undefined) : undefined,
-      location: scene === "next" ? (location.trim() || undefined) : undefined,
+      location: scene === "next" ? (location.trim() || undefined) : (scene === "reminder" ? (reminderLocation.trim() || undefined) : undefined),
+      reminderTitle: scene === "reminder" ? (reminderTitle.trim() || undefined) : undefined,
       recipientName: recipientName.trim() || undefined,
       includeSignature,
       replyStyle,
@@ -258,7 +261,7 @@ export default function GreetingScreen() {
     setEditedMessage(null);
     setIsEditing(false);
     if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [selectedCard, scene, tone, recipientName, meetingPurpose, meetingDate, meetingTime, meetingUrl, nextAction, theirAction, scheduleText, mtgTitle, location, includeSignature, replyStyle, replySubtype, confirmedDate, newScheduleText]);
+  }, [selectedCard, scene, tone, recipientName, meetingPurpose, meetingDate, meetingTime, meetingUrl, nextAction, theirAction, scheduleText, mtgTitle, location, reminderTitle, reminderLocation, includeSignature, replyStyle, replySubtype, confirmedDate, newScheduleText]);
 
   const displayMessage = editedMessage ?? generated;
 
@@ -499,6 +502,69 @@ export default function GreetingScreen() {
                 </View>
               </>
             )}
+          </View>
+        )}
+
+        {/* リマインドシーン: MTGタイトル・場所/URL */}
+        {scene === "reminder" && (
+          <View style={[st.card, { backgroundColor: c.surface, borderColor: c.border, gap: 10 }]}>
+            <Text style={{ fontSize: 14, fontWeight: "700", color: c.foreground }}>MTG情報（任意）</Text>
+            {/* MTGタイトル */}
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 12, color: c.muted }}>MTGタイトル</Text>
+              <TextInput
+                value={reminderTitle}
+                onChangeText={setReminderTitle}
+                placeholder="例: 〇〇についての打ち合わせ"
+                placeholderTextColor={c.muted}
+                returnKeyType="done"
+                style={[st.input, { color: c.foreground, backgroundColor: c.background, borderColor: c.border }]}
+              />
+            </View>
+            {/* 場所/URL */}
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 12, color: c.muted }}>場所 / URL</Text>
+              <TextInput
+                value={reminderLocation}
+                onChangeText={setReminderLocation}
+                placeholder="例: Zoom https://zoom.us/... または 〇〇会議室"
+                placeholderTextColor={c.muted}
+                returnKeyType="done"
+                style={[st.input, { color: c.foreground, backgroundColor: c.background, borderColor: reminderLocation ? c.primary : c.border }]}
+              />
+              {reminderLocation.length > 0 && (
+                <View style={[st.row, { gap: 6 }]}>
+                  <IconSymbol
+                    name={/^https?:\/\//i.test(reminderLocation.trim()) || /zoom\.us|teams\.microsoft\.com|meet\.google\.com|webex\.com/i.test(reminderLocation.trim()) ? "link" : "mappin"}
+                    size={13}
+                    color={c.primary}
+                  />
+                  <Text style={{ fontSize: 12, color: c.primary }}>
+                    {/^https?:\/\//i.test(reminderLocation.trim()) || /zoom\.us|teams\.microsoft\.com|meet\.google\.com|webex\.com/i.test(reminderLocation.trim())
+                      ? "「URL」として認識されます"
+                      : "「場所」として認識されます"}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* 次回案内シーンの場所/URL自動検出フィードバック */}
+        {scene === "next" && location.length > 0 && (
+          <View style={{ paddingHorizontal: 16, marginTop: -8 }}>
+            <View style={[st.row, { gap: 6 }]}>
+              <IconSymbol
+                name={/^https?:\/\//i.test(location.trim()) || /zoom\.us|teams\.microsoft\.com|meet\.google\.com|webex\.com/i.test(location.trim()) ? "link" : "mappin"}
+                size={13}
+                color={c.primary}
+              />
+              <Text style={{ fontSize: 12, color: c.primary }}>
+                {/^https?:\/\//i.test(location.trim()) || /zoom\.us|teams\.microsoft\.com|meet\.google\.com|webex\.com/i.test(location.trim())
+                  ? "「URL」として認識されます"
+                  : "「場所」として認識されます"}
+              </Text>
+            </View>
           </View>
         )}
 
