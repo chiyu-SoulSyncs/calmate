@@ -55,16 +55,16 @@ function formatDuration(minutes: number): string {
 const GREETINGS: Record<ToneLevel, (toName?: string) => string> = {
   formal: (toName) =>
     toName
-      ? `${toName}様\n\nお世話になっております。\nご都合をお伺いしたく、以下の日程はいかがでしょうか。`
-      : `お世話になっております。\nご都合をお伺いしたく、以下の日程はいかがでしょうか。`,
+      ? `${toName}様\n\nお世話になっております。\n以下の日程はいかがでしょうか。`
+      : `お世話になっております。\n以下の日程はいかがでしょうか。`,
   casual: (toName) =>
     toName
-      ? `${toName}さん\n\nお疲れ様です！\n以下の日程でご都合はいかがでしょうか？`
-      : `お疲れ様です！\n以下の日程でご都合はいかがでしょうか？`,
+      ? `${toName}さん\n\nお疲れ様です！\n以下の日程はいかがでしょうか？`
+      : `お疲れ様です！\n以下の日程はいかがでしょうか？`,
   friendly: (toName) =>
     toName
-      ? `${toName}\n\nお疲れ！\n以下の日程どうかな？`
-      : `以下の日程どうかな？`,
+      ? `${toName}\n\nお疲れ！\n以下の日程はどうかな？`
+      : `以下の日程はどうかな？`,
 };
 
 const CLOSINGS: Record<ToneLevel, string> = {
