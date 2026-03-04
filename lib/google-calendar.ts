@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
 
-const SELECTED_CALENDARS_KEY = "selected_calendar_ids";
+const selectedCalendarsKey = (userId: string) => `selected_calendar_ids:${userId}`;
 
 function apiBase() {
   return getApiBaseUrl();
@@ -132,12 +132,14 @@ export async function fetchEvents(
 
 // ---- Selected calendars persistence ----
 
-export async function saveSelectedCalendars(ids: string[]): Promise<void> {
-  await AsyncStorage.setItem(SELECTED_CALENDARS_KEY, JSON.stringify(ids));
+export async function saveSelectedCalendars(ids: string[], userId?: string): Promise<void> {
+  const key = userId ? selectedCalendarsKey(userId) : "selected_calendar_ids";
+  await AsyncStorage.setItem(key, JSON.stringify(ids));
 }
 
-export async function loadSelectedCalendars(): Promise<string[]> {
-  const raw = await AsyncStorage.getItem(SELECTED_CALENDARS_KEY);
+export async function loadSelectedCalendars(userId?: string): Promise<string[]> {
+  const key = userId ? selectedCalendarsKey(userId) : "selected_calendar_ids";
+  const raw = await AsyncStorage.getItem(key);
   if (!raw) return ["primary"];
   try {
     return JSON.parse(raw);

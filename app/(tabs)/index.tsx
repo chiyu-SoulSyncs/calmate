@@ -193,7 +193,7 @@ export default function HomeScreen() {
     setIsSearching(true);
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
-      const calendarIds = await loadSelectedCalendars();
+      const calendarIds = await loadSelectedCalendars(String(user.id));
       const timeMin = new Date(weekDatesForSearch[0]); timeMin.setHours(0, 0, 0, 0);
       const timeMax = new Date(weekDatesForSearch[weekDatesForSearch.length - 1]); timeMax.setHours(23, 59, 59, 999);
       const events = await fetchEvents(String(user.id), calendarIds, timeMin, timeMax);
@@ -232,7 +232,7 @@ export default function HomeScreen() {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
-      const calendarIds = await loadSelectedCalendars();
+      const calendarIds = await loadSelectedCalendars(String(user.id));
       const timeMin = new Date(datesToSearch[0]);
       timeMin.setHours(0, 0, 0, 0);
       const timeMax = new Date(datesToSearch[datesToSearch.length - 1]);

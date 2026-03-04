@@ -44,10 +44,10 @@ export default function SettingsScreen() {
       setGoogleConnected(connected);
       if (connected) {
         setLoadingCalendars(true);
-        const [cals, savedIds] = await Promise.all([
-          fetchCalendars(String(user.id)),
-          loadSelectedCalendars(),
-        ]);
+          const [cals, savedIds] = await Promise.all([
+            fetchCalendars(String(user.id)),
+            loadSelectedCalendars(String(user.id)),
+          ]);
         setCalendars(cals);
         setSelectedCalendarIds(savedIds);
       }
@@ -107,7 +107,7 @@ export default function SettingsScreen() {
       ? selectedCalendarIds.filter((id) => id !== calId)
       : [...selectedCalendarIds, calId];
     setSelectedCalendarIds(next);
-    await saveSelectedCalendars(next);
+    await saveSelectedCalendars(next, user ? String(user.id) : undefined);
   }, [selectedCalendarIds]);
 
   const c = colors;
