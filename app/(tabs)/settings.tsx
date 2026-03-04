@@ -76,8 +76,12 @@ export default function SettingsScreen() {
 
   const handleConnectGoogle = useCallback(async () => {
     if (!user) return;
-    await startGoogleAuth(String(user.id));
-  }, [user]);
+    const success = await startGoogleAuth(String(user.id));
+    // Nativeの場合、認証成功後にデータを再読み込み
+    if (success) {
+      await loadData();
+    }
+  }, [user, loadData]);
 
   const handleDisconnectGoogle = useCallback(() => {
     if (!user) return;

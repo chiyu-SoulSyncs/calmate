@@ -1,6 +1,7 @@
 import { getApiBaseUrl } from "@/constants/oauth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Linking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
 
 const SELECTED_CALENDARS_KEY = "selected_calendar_ids";
@@ -44,15 +45,54 @@ export async function checkGoogleConnection(userId: string): Promise<boolean> {
   }
 }
 
-export async function startGoogleAuth(userId: string): Promise<void> {
-  const res = await fetch(`${apiBase()}/api/oauth/google/start?userId=${encodeURIComponent(userId)}`);
-  const data = await res.json();
-  if (data.url) {
-    if (Platform.OS === "web") {
+/**
+ * Google OAuth認証を開始する
+ *
+ * - Web: サーバー側のOAuthフローを使用（window.location.hrefでリダイレクト）
+ * - Native (Expo Go / standalone): expo-web-browserのopenAuthSessionAsyncを使用
+ *   サーバー側コールバック後、アプリのディープリンクにリダイレクトされる
+ *
+ * @returns Promise<boolean> - 認証が成功したかどうか（native のみ有効）
+ */
+export async function startGoogleAuth(userId: string): Promise<boolean> {
+  const base = apiBase();
+
+  if (Platform.OS === "web") {
+    // Web: サーバーサイドOAuthフロー（リダイレクト）
+    const res = await fetch(`${base}/api/oauth/google/start?userId=${encodeURIComponent(userId)}`);
+    const data = await res.json();
+    if (data.url) {
       window.location.href = data.url;
-    } else {
-      await Linking.openURL(data.url);
     }
+    return false; // リダイレクトするので戻り値は意味なし
+  }
+
+  // Native: expo-web-browserを使用してシステムブラウザで認証
+  // コールバック後にアプリのディープリンクにリダイレクトされる
+  const appRedirectUri = Linking.createURL("/google-callback");
+  console.log("[Google Auth] App redirect URI:", appRedirectUri);
+
+  const startUrl = `${base}/api/oauth/google/start?userId=${encodeURIComponent(userId)}&appRedirect=${encodeURIComponent(appRedirectUri)}`;
+
+  try {
+    const result = await WebBrowser.openAuthSessionAsync(startUrl, appRedirectUri);
+    console.log("[Google Auth] WebBrowser result:", result.type);
+
+    if (result.type === "success") {
+      // ディープリンクのURLからパラメータを解析
+      const url = result.url;
+      const parsed = Linking.parse(url);
+      const params = parsed.queryParams ?? {};
+      console.log("[Google Auth] Callback params:", params);
+
+      if (params.googleConnected === "true") {
+        return true;
+      }
+    }
+    return false;
+  } catch (err) {
+    console.error("[Google Auth] openAuthSessionAsync error:", err);
+    return false;
   }
 }
 

@@ -69,10 +69,12 @@ export async function getValidAccessToken(userId: string): Promise<string | null
 }
 
 export function registerGoogleCalendarRoutes(app: Express) {
-  // Start Google OAuth flow
+  // Start Google OAuth flow (Web用: サーバーサイドOAuth)
   app.get("/api/oauth/google/start", (req: Request, res: Response) => {
     const userId = (req as any).userId || req.query.userId as string;
-    const state = Buffer.from(JSON.stringify({ userId, ts: Date.now() })).toString("base64url");
+    // appRedirect: native app deep link to redirect to after OAuth (e.g., exp://... or manus...://)
+    const appRedirect = req.query.appRedirect as string | undefined;
+    const state = Buffer.from(JSON.stringify({ userId, ts: Date.now(), appRedirect })).toString("base64url");
 
     const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     url.searchParams.set("client_id", GOOGLE_CLIENT_ID);
@@ -128,14 +130,68 @@ export function registerGoogleCalendarRoutes(app: Express) {
       });
 
       // Redirect back to app
-      const frontendUrl =
-        process.env.EXPO_WEB_PREVIEW_URL ||
-        process.env.EXPO_PACKAGER_PROXY_URL ||
-        "http://localhost:8081";
-      res.redirect(302, `${frontendUrl}?googleConnected=true`);
+      // appRedirect is stored in the state parameter (set by client when starting OAuth)
+      const appRedirect = stateData.appRedirect as string | undefined;
+      
+      if (appRedirect) {
+        // Native app: redirect back via deep link with success indicator
+        const redirectUrl = new URL(appRedirect);
+        redirectUrl.searchParams.set("googleConnected", "true");
+        redirectUrl.searchParams.set("userId", userId);
+        console.log(`[Google OAuth] Redirecting to app deep link: ${redirectUrl.toString()}`);
+        res.redirect(302, redirectUrl.toString());
+      } else {
+        // Web: redirect to frontend URL
+        const frontendUrl =
+          process.env.EXPO_WEB_PREVIEW_URL ||
+          process.env.EXPO_PACKAGER_PROXY_URL ||
+          "http://localhost:8081";
+        res.redirect(302, `${frontendUrl}?googleConnected=true`);
+      }
     } catch (error) {
       console.error("[Google OAuth] Callback error:", error);
       res.status(500).json({ error: "OAuth callback failed" });
+    }
+  });
+
+  /**
+   * Save access token from client-side OAuth (expo-auth-session)
+   * Used by Expo Go / native builds where the token is obtained on the client
+   */
+  app.post("/api/google/save-token", async (req: Request, res: Response) => {
+    const { userId, accessToken } = req.body;
+
+    if (!userId || !accessToken) {
+      res.status(400).json({ error: "userId and accessToken required" });
+      return;
+    }
+
+    // Verify the token is valid by calling Google's tokeninfo endpoint
+    try {
+      const verifyRes = await fetch(
+        `https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${encodeURIComponent(accessToken)}`
+      );
+      if (!verifyRes.ok) {
+        res.status(401).json({ error: "Invalid access token" });
+        return;
+      }
+      const tokenInfo = await verifyRes.json();
+      // exp is a Unix timestamp (seconds)
+      const expSeconds = parseInt(tokenInfo.exp ?? "0", 10);
+      const expiresAt = expSeconds > 0
+        ? expSeconds * 1000  // Unix timestamp (seconds) -> ms
+        : Date.now() + 3600 * 1000;  // fallback: 1 hour
+
+      setGoogleTokenForUser(userId, {
+        accessToken,
+        expiresAt,
+      });
+
+      console.log(`[Google Auth] Token saved for user ${userId}, expires at ${new Date(expiresAt).toISOString()}`);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[Google Auth] Save token error:", error);
+      res.status(500).json({ error: "Failed to save token" });
     }
   });
 
