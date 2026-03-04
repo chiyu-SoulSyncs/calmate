@@ -202,6 +202,30 @@ export default function ResultScreen() {
     }
   }, [message]);
 
+  // 次回案内に転送
+  const handleSendToGreeting = useCallback(async () => {
+    if (selectedSlotList.length === 0) {
+      Alert.alert("候補を選択してください", "転送する日程候補を1つ以上選択してください。");
+      return;
+    }
+    const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
+    const text = selectedSlotList.map((slot) => {
+      const s = slot.start;
+      const e = slot.end;
+      const m = s.getMonth() + 1;
+      const d = s.getDate();
+      const w = WEEKDAYS[s.getDay()];
+      const sh = s.getHours().toString().padStart(2, "0");
+      const sm = s.getMinutes().toString().padStart(2, "0");
+      const eh = e.getHours().toString().padStart(2, "0");
+      const em = e.getMinutes().toString().padStart(2, "0");
+      return `● ${m}月${d}日（${w}） ${sh}:${sm}〜${eh}:${em}`;
+    }).join("\n");
+    await AsyncStorage.setItem("greeting_schedule_transfer", text);
+    if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    router.push("/(tabs)/greeting");
+  }, [selectedSlotList, router]);
+
   // テンプレート保存
   const handleSaveTemplate = useCallback(async () => {
     if (!templateName.trim()) {
@@ -487,6 +511,14 @@ export default function ResultScreen() {
             >
               <IconSymbol name="bookmark" size={14} color={c.primary} />
               <Text style={{ fontSize: 12, color: c.primary, fontWeight: "600" }}>テンプレ保存</Text>
+            </Pressable>
+            {/* 次回案内に転送 */}
+            <Pressable
+              style={({ pressed }) => [st.row, { gap: 4, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 20, backgroundColor: c.tealLight }, pressed && { opacity: 0.7 }]}
+              onPress={handleSendToGreeting}
+            >
+              <IconSymbol name="calendar.badge.plus" size={14} color={c.primary} />
+              <Text style={{ fontSize: 12, color: c.primary, fontWeight: "600" }}>次回案内に使う</Text>
             </Pressable>
             <View style={{ flex: 1 }} />
             <Pressable

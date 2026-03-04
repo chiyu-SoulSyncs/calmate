@@ -49,6 +49,8 @@ export interface GenerateGreetingOptions {
   profile: ProfileCard;
   meeting?: MeetingInfo;
   slots?: GreetingSlot[];
+  /** 次回案内シーン用: 検索タブから転送または手入力した日程候補テキスト */
+  scheduleText?: string;
   recipientName?: string;
   /** 署名を末尾に付けるかどうか（デフォルト: true） */
   includeSignature?: boolean;
@@ -221,23 +223,23 @@ function buildReminder(opts: GenerateGreetingOptions): string {
 }
 
 function buildNext(opts: GenerateGreetingOptions): string {
-  const { profile, tone, slots, includeSignature = true } = opts;
+  const { profile, tone, scheduleText, includeSignature = true } = opts;
   const company = profile.company ?? "";
   const name = profile.name;
   const greet = openingGreeting(tone, company, name);
   const sig = maybeSignature(profile, tone, includeSignature);
 
-  const slotsText = slots && slots.length > 0
-    ? slots.map(s => `● ${s.date}⋅${s.time}`).join("\n")
-    : "（日程を選択してください）";
+  const slotsBlock = scheduleText?.trim()
+    ? scheduleText.trim()
+    : "（日程候補を貼り付けてください）";
 
   if (tone === "formal") {
-    return `${greet}\n\n次回のお打ち合わせ日程を設定させていただきたく、ご連絡いたしました。\n\n以下の日時でご都合のよいお時間はございますでしょうか。\nお手数ですが、ご確認いただけますと幸いです。\n\n${slotsText}\n\nその他、ご不明点やご要望などございましたら、何なりとお申し付けくださいませ。\n${closing(tone)}${sig}`;
+    return `${greet}\n\n次回のお打ち合わせ日程を設定させていただきたく、ご連絡いたしました。\n\n以下の日時でご都合のよいお時間はございますでしょうか。\nお手数ですが、ご確認いただけますと幸いです。\n\n${slotsBlock}\n\nその他、ご不明点やご要望などございましたら、何なりとお申し付けくださいませ。\n${closing(tone)}${sig}`;
   }
   if (tone === "casual") {
-    return `${greet}\n\n次回の打ち合わせ日程についてご連絡です！\n\n以下の日程でご都合はいかがでしょうか？\n\n${slotsText}\n\nご確認よろしくお願いします！${sig}`;
+    return `${greet}\n\n次回の打ち合わせ日程についてご連絡です！\n\n以下の日程でご都合はいかがでしょうか？\n\n${slotsBlock}\n\nご確認よろしくお願いします！${sig}`;
   }
-  return `次回の日程なんだけど、どれかいける？\n\n${slotsText}\n\n${closing(tone)}${sig}`;
+  return `次回の日程なんだけど、どれかいける？\n\n${slotsBlock}\n\n${closing(tone)}${sig}`;
 }
 
 function buildReply(opts: GenerateGreetingOptions): string {

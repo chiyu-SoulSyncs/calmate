@@ -11,6 +11,7 @@ import {
   FlatList,
   Modal,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { ScreenContainer } from "@/components/screen-container";
@@ -173,6 +174,22 @@ export default function GreetingScreen() {
   const [meetingUrl, setMeetingUrl] = useState("");
   const [nextAction, setNextAction] = useState("");
   const [theirAction, setTheirAction] = useState("");
+  // 次回案内シーン用: 検索タブから転送された日程テキスト
+  const [scheduleText, setScheduleText] = useState("");
+
+  // 次回案内シーン選択時に転送データを自動読み込み
+  React.useEffect(() => {
+    if (scene !== "next") return;
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem("greeting_schedule_transfer");
+        if (stored) {
+          setScheduleText(stored);
+          await AsyncStorage.removeItem("greeting_schedule_transfer");
+        }
+      } catch {}
+    })();
+  }, [scene]);
 
   // 署名・返信スタイル
   const [includeSignature, setIncludeSignature] = useState(true);
@@ -211,6 +228,7 @@ export default function GreetingScreen() {
       tone,
       profile,
       meeting,
+      scheduleText: scene === "next" ? (scheduleText.trim() || undefined) : undefined,
       recipientName: recipientName.trim() || undefined,
       includeSignature,
       replyStyle,
@@ -219,7 +237,7 @@ export default function GreetingScreen() {
     setEditedMessage(null);
     setIsEditing(false);
     if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [selectedCard, scene, tone, recipientName, meetingPurpose, meetingDate, meetingTime, meetingUrl, nextAction, theirAction, includeSignature, replyStyle]);
+  }, [selectedCard, scene, tone, recipientName, meetingPurpose, meetingDate, meetingTime, meetingUrl, nextAction, theirAction, scheduleText, includeSignature, replyStyle]);
 
   const displayMessage = editedMessage ?? generated;
 
@@ -231,7 +249,7 @@ export default function GreetingScreen() {
     setTimeout(() => setCopied(false), 2000);
   }, [displayMessage]);
 
-  const needsMeeting = scene === "reminder" || scene === "thanks" || scene === "next";
+  const needsMeeting = scene === "reminder" || scene === "thanks";
   const needsRecipient = scene === "intro";
 
   return (
@@ -459,6 +477,47 @@ export default function GreetingScreen() {
                     style={[st.input, { color: c.foreground, backgroundColor: c.background, borderColor: c.border, minHeight: 60, textAlignVertical: "top" }]} />
                 </View>
               </>
+            )}
+          </View>
+        )}
+
+        {/* 次回案内シーン: 日程貼り付けエリア */}
+        {scene === "next" && (
+          <View style={[st.card, { backgroundColor: c.surface, borderColor: c.border, gap: 10 }]}>
+            <View style={[st.row, { justifyContent: "space-between" }]}>
+              <View>
+                <Text style={{ fontSize: 14, fontWeight: "700", color: c.foreground }}>日程候補</Text>
+                <Text style={{ fontSize: 12, color: c.muted, marginTop: 2 }}>検索タブの結果から転送、または直接入力</Text>
+              </View>
+              {scheduleText.length > 0 && (
+                <Pressable
+                  style={({ pressed }) => [{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, backgroundColor: c.tealLight }, pressed && { opacity: 0.7 }]}
+                  onPress={() => setScheduleText("")}
+                >
+                  <Text style={{ fontSize: 12, color: c.primary }}>クリア</Text>
+                </Pressable>
+              )}
+            </View>
+            <TextInput
+              value={scheduleText}
+              onChangeText={setScheduleText}
+              placeholder={`例:\n● 3月10日（月） 10:00〜11:00\n● 3月11日（火） 14:00〜15:00`}
+              placeholderTextColor={c.muted}
+              multiline
+              style={[st.input, {
+                color: c.foreground,
+                backgroundColor: c.background,
+                borderColor: scheduleText ? c.primary : c.border,
+                minHeight: 100,
+                textAlignVertical: "top",
+                lineHeight: 22,
+              }]}
+            />
+            {scheduleText.length > 0 && (
+              <View style={[st.row, { gap: 6 }]}>
+                <IconSymbol name="checkmark.circle.fill" size={14} color={c.success} />
+                <Text style={{ fontSize: 12, color: c.success }}>日程候補が入力されています</Text>
+              </View>
             )}
           </View>
         )}
