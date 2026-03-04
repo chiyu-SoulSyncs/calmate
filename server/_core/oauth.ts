@@ -71,10 +71,17 @@ export function registerOAuthRoutes(app: Express) {
       return;
     }
 
+    // appRedirect is passed as a query param in the redirectUri itself
+    // e.g., /api/oauth/callback?appRedirect=manus20260304040150%3A%2F%2Foauth%2Fcallback
+    const appRedirect = getQueryParam(req, "appRedirect") ?? null;
+    if (appRedirect) {
+      console.log("[OAuth] appRedirect from query:", appRedirect);
+    }
+
     try {
       const tokenResponse = await sdk.exchangeCodeForToken(code, state);
       const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
-      await syncUser(userInfo);
+      const user = await syncUser(userInfo);
       const sessionToken = await sdk.createSessionToken(userInfo.openId!, {
         name: userInfo.name || "",
         expiresInMs: ONE_YEAR_MS,
@@ -82,6 +89,17 @@ export function registerOAuthRoutes(app: Express) {
 
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+
+      // If appRedirect is set, redirect to the native app's deep link with session token
+      if (appRedirect && (appRedirect.startsWith("manus") || appRedirect.startsWith("https://") || appRedirect.startsWith("http://"))) {
+        console.log("[OAuth] Redirecting to app deep link:", appRedirect);
+        const userBase64 = Buffer.from(JSON.stringify(buildUserResponse(user))).toString("base64");
+        const deepLinkUrl = new URL(appRedirect);
+        deepLinkUrl.searchParams.set("sessionToken", sessionToken);
+        deepLinkUrl.searchParams.set("user", userBase64);
+        res.redirect(302, deepLinkUrl.toString());
+        return;
+      }
 
       // Redirect to the frontend URL (Expo web on port 8081)
       // Cookie is set with parent domain so it works across both 3000 and 8081 subdomains

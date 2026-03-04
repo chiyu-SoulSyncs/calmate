@@ -1,5 +1,5 @@
-import * as Linking from "expo-linking";
 import * as ReactNative from "react-native";
+import * as WebBrowser from "expo-web-browser";
 
 // Extract scheme from bundle ID (last segment timestamp, prefixed with "manus")
 // e.g., "space.manus.my.app.t20240115103045" -> "manus20240115103045"
@@ -66,25 +66,48 @@ const encodeState = (value: string) => {
 /**
  * Get the redirect URI for OAuth callback.
  * - Web: uses API server callback endpoint
- * - Native: uses deep link scheme
+ * - Native: ALSO uses API server callback endpoint (Manus OAuth requires http/https or manus*)
+ *   but passes an appRedirect parameter so the server can redirect back to the app.
+ *
+ * NOTE: Expo Go uses exp:// scheme which is NOT allowed by Manus OAuth.
+ * The manus* custom scheme IS allowed, but Manus OAuth portal redirects to the server first.
+ * So we always use the server URL as redirectUri, and pass appRedirect separately.
  */
 export const getRedirectUri = () => {
+  // Both web and native use the server callback endpoint as the OAuth redirect URI
+  // This is required because Manus OAuth only allows http/https/manus* schemes
+  return `${getApiBaseUrl()}/api/oauth/callback`;
+};
+
+/**
+ * Get the app deep link URI for native platforms.
+ * After the server processes the OAuth callback, it redirects to this URI.
+ */
+export const getAppRedirectUri = () => {
   if (ReactNative.Platform.OS === "web") {
-    return `${getApiBaseUrl()}/api/oauth/callback`;
-  } else {
-    return Linking.createURL("/oauth/callback", {
-      scheme: env.deepLinkScheme,
-    });
+    return null; // Web doesn't need app redirect
   }
+  // Use manus* custom scheme directly (not Linking.createURL which generates exp:// in Expo Go)
+  return `${env.deepLinkScheme}://oauth/callback`;
 };
 
 export const getLoginUrl = () => {
-  const redirectUri = getRedirectUri();
-  const state = encodeState(redirectUri);
+  const appRedirectUri = getAppRedirectUri();
+
+  // Build the server redirect URI
+  // For native: include appRedirect as a query param in the redirectUri
+  // so the server can read it from req.query when the OAuth callback arrives
+  let serverRedirectUri = getRedirectUri();
+  if (appRedirectUri) {
+    serverRedirectUri = `${serverRedirectUri}?appRedirect=${encodeURIComponent(appRedirectUri)}`;
+  }
+
+  // state must be base64(redirectUri) - this is what the SDK's decodeState() expects
+  const state = encodeState(serverRedirectUri);
 
   const url = new URL(`${OAUTH_PORTAL_URL}/app-auth`);
   url.searchParams.set("appId", APP_ID);
-  url.searchParams.set("redirectUri", redirectUri);
+  url.searchParams.set("redirectUri", serverRedirectUri);
   url.searchParams.set("state", state);
   url.searchParams.set("type", "signIn");
 
@@ -94,8 +117,9 @@ export const getLoginUrl = () => {
 /**
  * Start OAuth login flow.
  *
- * On native platforms (iOS/Android), open the system browser directly so
- * the OAuth callback returns via deep link to the app.
+ * On native platforms (iOS/Android), use expo-web-browser openAuthSessionAsync
+ * to open the system browser. The server OAuth callback redirects to the app
+ * via manus* deep link scheme.
  *
  * On web, this simply redirects to the login URL.
  *
@@ -103,6 +127,7 @@ export const getLoginUrl = () => {
  */
 export async function startOAuthLogin(): Promise<string | null> {
   const loginUrl = getLoginUrl();
+  const appRedirectUri = getAppRedirectUri();
 
   if (ReactNative.Platform.OS === "web") {
     // On web, just redirect
@@ -112,18 +137,21 @@ export async function startOAuthLogin(): Promise<string | null> {
     return null;
   }
 
-  const supported = await Linking.canOpenURL(loginUrl);
-  if (!supported) {
-    console.warn("[OAuth] Cannot open login URL: URL scheme not supported");
-    // 可考虑抛出错误或返回错误状态，让调用方处理
-    return null;
-  }
-
+  // Native: expo-web-browserを使用してシステムブラウザで認証
+  // サーバーがOAuth処理後、manus*ディープリンクでアプリに自動返る
   try {
-    await Linking.openURL(loginUrl);
+    console.log("[OAuth] Opening login URL:", loginUrl);
+    console.log("[OAuth] App redirect URI:", appRedirectUri);
+    // openAuthSessionAsync の第2引数にアプリスキームを渡すことで
+    // ブラウザがそのスキームのURLに遷移したときに自動でアプリに戻る
+    const result = await WebBrowser.openAuthSessionAsync(
+      loginUrl,
+      appRedirectUri ?? `${env.deepLinkScheme}://`,
+    );
+    console.log("[OAuth] WebBrowser result:", result.type);
+    // 認証後のディープリンクは app/oauth/callback.tsx で処理される
   } catch (error) {
     console.error("[OAuth] Failed to open login URL:", error);
-    // 可考虑抛出错误让调用方处理
   }
 
   // The OAuth callback will reopen the app via deep link.
