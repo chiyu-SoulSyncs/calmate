@@ -272,14 +272,16 @@ function buildReply(opts: GenerateGreetingOptions): string {
 
   // 日程確定
   if (replySubtype === "confirmed") {
-    const dateStr = confirmedDate?.trim() ? `\n\n以下の通りでご入力ください。\n${confirmedDate.trim()}` : "";
     if (tone === "formal") {
-      return `ご連絡ありがとうございます。\n${ack}${dateStr ? `\n\n${confirmedDate?.trim()}にてお待ちしております。` : ""}\n引き続きどうぞよろしくお願いいたします。${sig}`;
+      const dateBlock = confirmedDate?.trim() ? `\n\n${confirmedDate.trim()}にてお待ちしております。` : "";
+      return `ご連絡ありがとうございます。\n${ack}${dateBlock}\n引き続きどうぞよろしくお願いいたします。${sig}`;
     }
     if (tone === "casual") {
-      return `ご連絡ありがとうございます！\n${ackCasual}${confirmedDate?.trim() ? `\n${confirmedDate.trim()}でお待ちしています！` : ""}\n引き続きよろしくお願いします！${sig}`;
+      const dateBlock = confirmedDate?.trim() ? `\n${confirmedDate.trim()}でお待ちしています！` : "";
+      return `ご連絡ありがとうございます！\n${ackCasual}${dateBlock}\n引き続きよろしくお願いします！${sig}`;
     }
-    return `了解〜！${confirmedDate?.trim() ? `\n${confirmedDate.trim()}ね！` : ""}\nよろしくね！${sig}`;
+    const dateBlock = confirmedDate?.trim() ? `\n${confirmedDate.trim()}ね！` : "";
+    return `了解〜！${dateBlock}\nよろしくね！${sig}`;
   }
 
   // 別候補を依頼
@@ -308,15 +310,15 @@ function buildReply(opts: GenerateGreetingOptions): string {
   // 保留・検討中
   if (replySubtype === "pending") {
     if (tone === "formal") {
-      return `ご連絡ありがとうございます。\nご検討いただきありがとうございます。\nご都合のよいタイミングでご連絡いただけますと幸いです。\n引き続きどうぞよろしくお願いいたします。${sig}`;
+      return `ご連絡ありがとうございます。\nご検討いただき、誠にありがとうございます。\nお時間のある際にご連絡いただけますと幸いです。\n引き続きどうぞよろしくお願いいたします。${sig}`;
     }
     if (tone === "casual") {
-      return `ご連絡ありがとうございます！\nご検討いただきありがとうございます。\nご都合のよいタイミングでご連絡ください！${sig}`;
+      return `ご連絡ありがとうございます！\n検討いただきありがとうございます。\nお時間のある時にご連絡ください！${sig}`;
     }
     return `検討してくれてありがとう！\n決まったら連絡してね！${sig}`;
   }
 
-  // こちらから辞辺
+  // こちらから辞退
   if (replySubtype === "self_decline") {
     if (tone === "formal") {
       return `ご連絡ありがとうございます。\n誠に恐れ入りますが、今回は弊社の都合によりご一緒することが難しい状況でございます。\nまたの機会にご一緒できますことを楽しみにしております。\n今後ともどうぞよろしくお願いいたします。${sig}`;
@@ -324,7 +326,7 @@ function buildReply(opts: GenerateGreetingOptions): string {
     if (tone === "casual") {
       return `ご連絡ありがとうございます。\n大変申し訳ございませんが、今回は弊社の事情により参加が難しい状況です。\nまたの機会によろしくお願いします。${sig}`;
     }
-    return `ごめん、今回は参加できそうにないんだ。\nまた誤ってね！${sig}`;
+    return `ごめん、今回は参加できそうにないんだ。\nまた誘ってね！${sig}`;
   }
 
   // 日程変更の依頼

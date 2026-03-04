@@ -50,9 +50,9 @@ const TONES: { id: GreetingTone; label: string }[] = [
 const REPLY_SUBTYPES: { id: ReplySubtype; label: string; icon: string; desc: string }[] = [
   { id: "confirmed",      label: "日程が決まった",     icon: "checkmark.circle.fill",  desc: "相手が候補日を選んでくれた" },
   { id: "reschedule",     label: "別候補を依頼",       icon: "calendar.badge.plus",    desc: "日程が合わず、改めて提案" },
-  { id: "declined",       label: "断られた",           icon: "xmark.circle.fill",      desc: "先方から論じられた" },
+  { id: "declined",       label: "断られた",           icon: "xmark.circle.fill",      desc: "先方から断りの連絡が来た" },
   { id: "pending",        label: "保留・検討中",       icon: "clock.fill",             desc: "検討しますと言われた" },
-  { id: "self_decline",   label: "こちらから辞辺",     icon: "hand.raised.fill",       desc: "こちらが断る場合" },
+  { id: "self_decline",   label: "こちらから辞退",     icon: "hand.raised.fill",       desc: "こちらが断る場合" },
   { id: "change_request", label: "日程変更を依頼",     icon: "arrow.triangle.2.circlepath", desc: "一度決まった日程を変更したい" },
 ];
 
