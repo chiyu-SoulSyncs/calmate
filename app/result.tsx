@@ -10,7 +10,6 @@ import {
   Alert,
   Modal,
   FlatList,
-  ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as Clipboard from "expo-clipboard";
@@ -29,7 +28,6 @@ import {
   type MessageTemplate,
 } from "@/lib/exclusion-settings";
 import { useAuthContext } from "@/lib/auth-context";
-import { getApiBaseUrl } from "@/constants/oauth";
 
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -77,10 +75,6 @@ export default function ResultScreen() {
   const colors = useColors();
   const router = useRouter();
   const { user } = useAuthContext();
-
-  // 仮予定登録: slotIndex -> eventId
-  const [tentativeEvents, setTentativeEvents] = useState<Record<number, string>>({});
-  const [registeringSlot, setRegisteringSlot] = useState<number | null>(null);
 
   const [slots, setSlots] = useState<FreeSlot[]>([]);
   const [selectedSlots, setSelectedSlots] = useState<Set<number>>(new Set());
@@ -138,78 +132,6 @@ export default function ResultScreen() {
       } catch {}
     });
   }, []);
-
-  // 仮予定として登録
-  const handleRegisterTentative = useCallback(async (idx: number, slot: FreeSlot) => {
-    if (!user) {
-      Alert.alert("ログインが必要です", "仮予定を登録するにはログインしてください。");
-      return;
-    }
-    setRegisteringSlot(idx);
-    try {
-      const API_BASE = getApiBaseUrl();
-      const res = await fetch(`${API_BASE}/api/google/events/create`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: user.id,
-          title: "【仮】打ち合わせ",
-          startIso: slot.start.toISOString(),
-          endIso: slot.end.toISOString(),
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setTentativeEvents((prev) => ({ ...prev, [idx]: data.eventId }));
-        if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert("登録しました", "Googleカレンダーに仮予定を登録しました。");
-      } else if (data.needsAuth) {
-        Alert.alert("Googleカレンダー未連携", "設定画面からGoogleカレンダーを連携してください。");
-      } else {
-        Alert.alert("エラー", "仮予定の登録に失敗しました。");
-      }
-    } catch {
-      Alert.alert("エラー", "サーバーに接続できませんでした。");
-    } finally {
-      setRegisteringSlot(null);
-    }
-  }, [user]);
-
-  // 仮予定を削除
-  const handleDeleteTentative = useCallback(async (idx: number) => {
-    const eventId = tentativeEvents[idx];
-    if (!eventId || !user) return;
-    const doDelete = async () => {
-      try {
-        const API_BASE = getApiBaseUrl();
-        const res = await fetch(
-          `${API_BASE}/api/google/events/${encodeURIComponent(eventId)}?userId=${encodeURIComponent(user.id)}`,
-          { method: "DELETE" }
-        );
-        const data = await res.json();
-        if (data.success) {
-          setTentativeEvents((prev) => {
-            const next = { ...prev };
-            delete next[idx];
-            return next;
-          });
-          if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        } else {
-          Alert.alert("エラー", "仮予定の削除に失敗しました。");
-        }
-      } catch {
-        Alert.alert("エラー", "サーバーに接続できませんでした。");
-      }
-    };
-    if (Platform.OS === "web") {
-      if (window.confirm("この仮予定をGoogleカレンダーから削除しますか？")) doDelete();
-    } else {
-      Alert.alert("仮予定を削除", "Googleカレンダーから仮予定を削除しますか？", [
-        { text: "キャンセル", style: "cancel" },
-        { text: "削除", style: "destructive", onPress: doDelete },
-      ]);
-    }
-  }, [tentativeEvents, user]);
 
   const toggleSlot = useCallback((idx: number) => {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -413,40 +335,7 @@ export default function ResultScreen() {
                       {isSelected && <IconSymbol name="checkmark" size={13} color="#fff" />}
                     </View>
                   </Pressable>
-                  {/* 仮予定登録ボタン */}
-                  <View style={{ flexDirection: "row", marginTop: 4, marginLeft: 4 }}>
-                    {tentativeEvents[i] ? (
-                      <Pressable
-                        style={({ pressed }) => [{
-                          flexDirection: "row", alignItems: "center", gap: 4,
-                          paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20,
-                          backgroundColor: c.success + "22",
-                        }, pressed && { opacity: 0.7 }]}
-                        onPress={() => handleDeleteTentative(i)}
-                      >
-                        <IconSymbol name="checkmark.circle.fill" size={13} color={c.success} />
-                        <Text style={{ fontSize: 11, color: c.success, fontWeight: "700" }}>仮予定登録済</Text>
-                        <Text style={{ fontSize: 10, color: c.muted }}>（タップで削除）</Text>
-                      </Pressable>
-                    ) : (
-                      <Pressable
-                        style={({ pressed }) => [{
-                          flexDirection: "row", alignItems: "center", gap: 4,
-                          paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20,
-                          backgroundColor: c.tealLight,
-                        }, pressed && { opacity: 0.7 }]}
-                        onPress={() => handleRegisterTentative(i, slot)}
-                        disabled={registeringSlot === i}
-                      >
-                        {registeringSlot === i ? (
-                          <ActivityIndicator size={12} color={c.primary} />
-                        ) : (
-                          <IconSymbol name="calendar.badge.plus" size={13} color={c.primary} />
-                        )}
-                        <Text style={{ fontSize: 11, color: c.primary, fontWeight: "600" }}>仮予定登録</Text>
-                      </Pressable>
-                    )}
-                  </View>
+
                 </View>
               );
             })
