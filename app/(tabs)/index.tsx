@@ -401,12 +401,14 @@ export default function HomeScreen() {
                     style={({ pressed }) => [
                       { width: "14.28%", aspectRatio: 1, alignItems: "center", justifyContent: "center", borderRadius: 100 },
                       isSelected && { backgroundColor: c.primary },
-                      isToday && !isSelected && { borderWidth: 2, borderColor: c.primary },
                       pressed && !isPast && { opacity: 0.7 },
                     ]}
                     onPress={() => !isPast && toggleDate(date)}
                     disabled={isPast}
                   >
+                    {isToday && !isSelected && (
+                      <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: 100, borderWidth: 2, borderColor: c.primary }} pointerEvents="none" />
+                    )}
                     <Text style={{ fontSize: 14, fontWeight: isSelected ? "700" : "500", color: isSelected ? "#fff" : isPast || !isCurrentMonth ? c.border : c.foreground }}>
                       {date.getDate()}
                     </Text>
