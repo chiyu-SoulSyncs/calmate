@@ -29,6 +29,10 @@ export default function LoginScreen() {
           try {
             const userJson = atob(result.userBase64);
             const userObj = JSON.parse(userJson);
+            // Validate user data from deep link
+            if (typeof userObj.id !== 'number' || !userObj.id) {
+              throw new Error('Invalid user data');
+            }
             const userInfo: Auth.User = {
               id: userObj.id,
               googleId: userObj.googleId ?? null,

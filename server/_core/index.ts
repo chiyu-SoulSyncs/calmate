@@ -31,20 +31,24 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
 
-  // Enable CORS for all routes - reflect the request origin to support credentials
+  // CORS allowlist
+  const ALLOWED_ORIGINS = new Set([
+    'http://localhost:8081',
+    'http://localhost:3000',
+  ]);
+
+  // Allow additional origins from env
+  const extraOrigins = process.env.ALLOWED_ORIGINS?.split(',') ?? [];
+  extraOrigins.forEach(o => ALLOWED_ORIGINS.add(o.trim()));
+
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    if (origin) {
+    if (origin && ALLOWED_ORIGINS.has(origin)) {
       res.header("Access-Control-Allow-Origin", origin);
+      res.header("Access-Control-Allow-Credentials", "true");
     }
     res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.header(
-      "Access-Control-Allow-Headers",
-      "Origin, X-Requested-With, Content-Type, Accept, Authorization",
-    );
-    res.header("Access-Control-Allow-Credentials", "true");
-
-    // Handle preflight requests
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
     if (req.method === "OPTIONS") {
       res.sendStatus(200);
       return;
@@ -52,8 +56,8 @@ async function startServer() {
     next();
   });
 
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.use(express.json({ limit: "2mb" }));
+  app.use(express.urlencoded({ limit: "2mb", extended: true }));
 
   registerOAuthRoutes(app);
   registerGoogleCalendarRoutes(app);

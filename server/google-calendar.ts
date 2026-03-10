@@ -1,5 +1,8 @@
 import type { Express, Request, Response } from "express";
+import { createHmac } from "crypto";
 import { getGoogleToken, upsertGoogleToken, deleteGoogleToken } from "./db";
+import { sdk } from "./_core/sdk";
+import { ENV } from "./_core/env";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
@@ -12,6 +15,26 @@ const SCOPES = [
   "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/userinfo.email",
 ].join(" ");
+
+function signState(payload: object): string {
+  const data = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const hmac = createHmac("sha256", ENV.cookieSecret).update(data).digest("hex");
+  return `${data}.${hmac}`;
+}
+
+function verifyState(state: string): Record<string, unknown> | null {
+  const dotIndex = state.lastIndexOf(".");
+  if (dotIndex < 0) return null;
+  const data = state.slice(0, dotIndex);
+  const hmac = state.slice(dotIndex + 1);
+  const expected = createHmac("sha256", ENV.cookieSecret).update(data).digest("hex");
+  if (hmac !== expected) return null;
+  try {
+    return JSON.parse(Buffer.from(data, "base64url").toString());
+  } catch {
+    return null;
+  }
+}
 
 export async function getGoogleTokenForUser(userId: string) {
   return await getGoogleToken(userId);
@@ -74,12 +97,41 @@ export async function getValidAccessToken(userId: string): Promise<string | null
 }
 
 export function registerGoogleCalendarRoutes(app: Express) {
-  // Start Google OAuth flow (Web用: サーバーサイドOAuth)
-  app.get("/api/oauth/google/start", (req: Request, res: Response) => {
-    const userId = (req as any).userId || req.query.userId as string;
-    // appRedirect: native app deep link to redirect to after OAuth (e.g., exp://... or manus...://)
+  // Start Google OAuth flow for connecting Google Calendar
+  app.get("/api/oauth/google/start", async (req: Request, res: Response) => {
+    let userId: string;
+
+    try {
+      const user = await sdk.authenticateRequest(req);
+      userId = user.openId;
+    } catch {
+      // Fallback for native where cookie might not be sent
+      const queryUserId = req.query.userId as string | undefined;
+      if (!queryUserId) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+      userId = queryUserId;
+    }
+
     const appRedirect = req.query.appRedirect as string | undefined;
-    const state = Buffer.from(JSON.stringify({ userId, ts: Date.now(), appRedirect })).toString("base64url");
+
+    // Validate appRedirect to only allow calmate:// scheme
+    if (appRedirect) {
+      try {
+        const redirectUrl = new URL(appRedirect);
+        if (redirectUrl.protocol !== "calmate:") {
+          res.status(400).json({ error: "Invalid appRedirect scheme, only calmate:// is allowed" });
+          return;
+        }
+      } catch {
+        res.status(400).json({ error: "Invalid appRedirect URL" });
+        return;
+      }
+    }
+
+    // HMAC-sign the state to prevent forgery
+    const state = signState({ userId, ts: Date.now(), appRedirect });
 
     const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     url.searchParams.set("client_id", GOOGLE_CLIENT_ID);
@@ -90,7 +142,6 @@ export function registerGoogleCalendarRoutes(app: Express) {
     url.searchParams.set("prompt", "consent");
     url.searchParams.set("state", state);
 
-    // Redirect directly to Google OAuth page (works for both browser and openAuthSessionAsync)
     res.redirect(302, url.toString());
   });
 
@@ -104,8 +155,14 @@ export function registerGoogleCalendarRoutes(app: Express) {
       return;
     }
 
+    // Verify HMAC state before processing
+    const stateData = verifyState(state);
+    if (!stateData) {
+      res.status(403).json({ error: "Invalid or tampered state parameter" });
+      return;
+    }
+
     try {
-      const stateData = JSON.parse(Buffer.from(state, "base64url").toString());
       const userId = stateData.userId as string;
 
       // Exchange code for tokens
@@ -122,8 +179,6 @@ export function registerGoogleCalendarRoutes(app: Express) {
       });
 
       if (!tokenRes.ok) {
-        const err = await tokenRes.text();
-        console.error("[Google OAuth] Token exchange failed:", err);
         res.status(500).json({ error: "Token exchange failed" });
         return;
       }
@@ -136,15 +191,12 @@ export function registerGoogleCalendarRoutes(app: Express) {
       });
 
       // Redirect back to app
-      // appRedirect is stored in the state parameter (set by client when starting OAuth)
       const appRedirect = stateData.appRedirect as string | undefined;
-      
+
       if (appRedirect) {
         // Native app: redirect back via deep link with success indicator
         const redirectUrl = new URL(appRedirect);
         redirectUrl.searchParams.set("googleConnected", "true");
-        redirectUrl.searchParams.set("userId", userId);
-        console.log(`[Google OAuth] Redirecting to app deep link: ${redirectUrl.toString()}`);
         res.redirect(302, redirectUrl.toString());
       } else {
         // Web: redirect to frontend URL
@@ -155,7 +207,6 @@ export function registerGoogleCalendarRoutes(app: Express) {
         res.redirect(302, `${frontendUrl}?googleConnected=true`);
       }
     } catch (error) {
-      console.error("[Google OAuth] Callback error:", error);
       res.status(500).json({ error: "OAuth callback failed" });
     }
   });
@@ -165,10 +216,19 @@ export function registerGoogleCalendarRoutes(app: Express) {
    * Used by Expo Go / native builds where the token is obtained on the client
    */
   app.post("/api/google/save-token", async (req: Request, res: Response) => {
-    const { userId, accessToken } = req.body;
+    let userId: string;
+    try {
+      const user = await sdk.authenticateRequest(req);
+      userId = user.openId;
+    } catch {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
 
-    if (!userId || !accessToken) {
-      res.status(400).json({ error: "userId and accessToken required" });
+    const { accessToken } = req.body;
+
+    if (!accessToken) {
+      res.status(400).json({ error: "accessToken required" });
       return;
     }
 
@@ -193,19 +253,20 @@ export function registerGoogleCalendarRoutes(app: Express) {
         expiresAt,
       });
 
-      console.log(`[Google Auth] Token saved for user ${userId}, expires at ${new Date(expiresAt).toISOString()}`);
       res.json({ success: true });
     } catch (error) {
-      console.error("[Google Auth] Save token error:", error);
       res.status(500).json({ error: "Failed to save token" });
     }
   });
 
   // Check Google connection status
   app.get("/api/google/status", async (req: Request, res: Response) => {
-    const userId = req.query.userId as string;
-    if (!userId) {
-      res.json({ connected: false });
+    let userId: string;
+    try {
+      const user = await sdk.authenticateRequest(req);
+      userId = user.openId;
+    } catch {
+      res.status(401).json({ error: "Authentication required" });
       return;
     }
     const token = await getValidAccessToken(userId);
@@ -214,9 +275,12 @@ export function registerGoogleCalendarRoutes(app: Express) {
 
   // Get list of calendars
   app.get("/api/google/calendars", async (req: Request, res: Response) => {
-    const userId = req.query.userId as string;
-    if (!userId) {
-      res.status(401).json({ error: "userId required" });
+    let userId: string;
+    try {
+      const user = await sdk.authenticateRequest(req);
+      userId = user.openId;
+    } catch {
+      res.status(401).json({ error: "Authentication required" });
       return;
     }
 
@@ -238,20 +302,27 @@ export function registerGoogleCalendarRoutes(app: Express) {
       const data = await calRes.json();
       res.json({ calendars: data.items ?? [] });
     } catch (error) {
-      console.error("[Google Calendar] List calendars error:", error);
       res.status(500).json({ error: "Failed to fetch calendars" });
     }
   });
 
   // Get events for specified date range
   app.get("/api/google/events", async (req: Request, res: Response) => {
-    const userId = req.query.userId as string;
+    let userId: string;
+    try {
+      const user = await sdk.authenticateRequest(req);
+      userId = user.openId;
+    } catch {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
     const calendarIds = req.query.calendarIds as string; // comma-separated
     const timeMin = req.query.timeMin as string;
     const timeMax = req.query.timeMax as string;
 
-    if (!userId || !timeMin || !timeMax) {
-      res.status(400).json({ error: "userId, timeMin, timeMax required" });
+    if (!timeMin || !timeMax) {
+      res.status(400).json({ error: "timeMin, timeMax required" });
       return;
     }
 
@@ -286,24 +357,39 @@ export function registerGoogleCalendarRoutes(app: Express) {
 
       res.json({ events: allEvents });
     } catch (error) {
-      console.error("[Google Calendar] Fetch events error:", error);
       res.status(500).json({ error: "Failed to fetch events" });
     }
   });
 
   // Disconnect Google
   app.post("/api/google/disconnect", async (req: Request, res: Response) => {
-    const { userId } = req.body;
-    if (userId) await deleteGoogleToken(userId);
+    let userId: string;
+    try {
+      const user = await sdk.authenticateRequest(req);
+      userId = user.openId;
+    } catch {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+    await deleteGoogleToken(userId);
     res.json({ success: true });
   });
 
-  // Create a calendar event (仮予定登録)
+  // Create a calendar event
   app.post("/api/google/events/create", async (req: Request, res: Response) => {
-    const { userId, calendarId = "primary", title, startIso, endIso, description } = req.body;
+    let userId: string;
+    try {
+      const user = await sdk.authenticateRequest(req);
+      userId = user.openId;
+    } catch {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
 
-    if (!userId || !startIso || !endIso) {
-      res.status(400).json({ error: "userId, startIso, endIso required" });
+    const { calendarId = "primary", title, startIso, endIso, description } = req.body;
+
+    if (!startIso || !endIso) {
+      res.status(400).json({ error: "startIso, endIso required" });
       return;
     }
 
@@ -335,8 +421,6 @@ export function registerGoogleCalendarRoutes(app: Express) {
       );
 
       if (!createRes.ok) {
-        const err = await createRes.text();
-        console.error("[Google Calendar] Create event error:", err);
         res.status(createRes.status).json({ error: "Failed to create event" });
         return;
       }
@@ -344,18 +428,26 @@ export function registerGoogleCalendarRoutes(app: Express) {
       const created = await createRes.json();
       res.json({ success: true, eventId: created.id, htmlLink: created.htmlLink });
     } catch (error) {
-      console.error("[Google Calendar] Create event error:", error);
       res.status(500).json({ error: "Failed to create event" });
     }
   });
 
-  // Delete a calendar event (仮予定削除)
+  // Delete a calendar event
   app.delete("/api/google/events/:eventId", async (req: Request, res: Response) => {
-    const { userId, calendarId = "primary" } = req.query as Record<string, string>;
+    let userId: string;
+    try {
+      const user = await sdk.authenticateRequest(req);
+      userId = user.openId;
+    } catch {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
+    const { calendarId = "primary" } = req.query as Record<string, string>;
     const { eventId } = req.params;
 
-    if (!userId || !eventId) {
-      res.status(400).json({ error: "userId and eventId required" });
+    if (!eventId) {
+      res.status(400).json({ error: "eventId required" });
       return;
     }
 
@@ -381,7 +473,6 @@ export function registerGoogleCalendarRoutes(app: Express) {
 
       res.json({ success: true });
     } catch (error) {
-      console.error("[Google Calendar] Delete event error:", error);
       res.status(500).json({ error: "Failed to delete event" });
     }
   });

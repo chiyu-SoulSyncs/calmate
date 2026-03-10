@@ -38,7 +38,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const appState = useRef(AppState.currentState);
 
   const fetchUser = useCallback(async () => {
-    console.log("[AuthContext] fetchUser called");
     try {
       setLoading(true);
       setError(null);
@@ -76,7 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (err) {
       const error = err instanceof Error ? err : new Error("Failed to fetch user");
-      console.error("[AuthContext] fetchUser error:", error);
+      if (__DEV__) console.error("[AuthContext] fetchUser error:", error);
       setError(error);
       setUser(null);
     } finally {
@@ -88,7 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await Api.logout();
     } catch (err) {
-      console.error("[AuthContext] Logout API call failed:", err);
+      if (__DEV__) console.error("[AuthContext] Logout API call failed:", err);
     } finally {
       await Auth.removeSessionToken();
       await Auth.clearUserInfo();
@@ -120,7 +119,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         appState.current.match(/inactive|background/) &&
         nextAppState === "active"
       ) {
-        console.log("[AuthContext] App came to foreground, re-checking auth state...");
         fetchUser();
       }
       appState.current = nextAppState;

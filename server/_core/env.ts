@@ -1,3 +1,11 @@
+// Validate JWT_SECRET at server startup (skip during test/build)
+if (process.env.NODE_ENV !== "test" && !process.env.VITEST) {
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
+    console.error("FATAL: JWT_SECRET must be set and at least 16 characters");
+    process.exit(1);
+  }
+}
+
 export const ENV = {
   cookieSecret: process.env.JWT_SECRET ?? "",
   databaseUrl: process.env.DATABASE_URL ?? "",

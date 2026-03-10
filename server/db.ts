@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, profileCards, InsertProfileCard, googleTokens, InsertGoogleToken } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -140,11 +140,11 @@ export async function createProfileCard(data: InsertProfileCard) {
 export async function updateProfileCard(id: number, userId: number, data: Partial<InsertProfileCard>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(profileCards).set(data).where(eq(profileCards.id, id));
+  await db.update(profileCards).set(data).where(and(eq(profileCards.id, id), eq(profileCards.userId, userId)));
 }
 
 export async function deleteProfileCard(id: number, userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.delete(profileCards).where(eq(profileCards.id, id));
+  await db.delete(profileCards).where(and(eq(profileCards.id, id), eq(profileCards.userId, userId)));
 }

@@ -17,17 +17,9 @@ export default function OAuthCallback() {
 
   useEffect(() => {
     const handleCallback = async () => {
-      console.log("[OAuth] Callback handler triggered");
-      console.log("[OAuth] Params received:", {
-        sessionToken: params.sessionToken ? "present" : "missing",
-        user: params.user ? "present" : "missing",
-        error: params.error,
-      });
-
       try {
         // Check for error
         if (params.error) {
-          console.error("[OAuth] Error parameter found:", params.error);
           setStatus("error");
           setErrorMessage(params.error);
           return;
@@ -35,13 +27,11 @@ export default function OAuthCallback() {
 
         // Check for sessionToken (from native deep link or web redirect)
         if (!params.sessionToken) {
-          console.error("[OAuth] No session token in params");
           setStatus("error");
           setErrorMessage("No session token received");
           return;
         }
 
-        console.log("[OAuth] Session token found in params");
         await Auth.setSessionToken(params.sessionToken);
 
         // Decode and store user info if available
@@ -52,6 +42,12 @@ export default function OAuthCallback() {
                 ? atob(params.user)
                 : Buffer.from(params.user, "base64").toString("utf-8");
             const userData = JSON.parse(userJson);
+
+            // Validate user data from deep link
+            if (typeof userData.id !== 'number' || !userData.id) {
+              throw new Error('Invalid user data');
+            }
+
             const userInfo: Auth.User = {
               id: userData.id,
               googleId: userData.googleId ?? null,
@@ -59,19 +55,17 @@ export default function OAuthCallback() {
               email: userData.email ?? null,
             };
             await Auth.setUserInfo(userInfo);
-            console.log("[OAuth] User info stored:", userInfo);
           } catch (err) {
-            console.error("[OAuth] Failed to parse user data:", err);
+            if (__DEV__) console.error("[OAuth] Failed to parse user data:", err);
           }
         }
 
         setStatus("success");
-        console.log("[OAuth] Authentication successful, redirecting to home...");
         setTimeout(() => {
           router.replace("/(tabs)");
         }, 1000);
       } catch (error) {
-        console.error("[OAuth] Callback error:", error);
+        if (__DEV__) console.error("[OAuth] Callback error:", error);
         setStatus("error");
         setErrorMessage(
           error instanceof Error ? error.message : "Failed to complete authentication",

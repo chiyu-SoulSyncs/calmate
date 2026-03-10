@@ -58,13 +58,10 @@ export async function startGoogleLogin(): Promise<{
 
   // Native: use expo-web-browser to open the system browser for Google OAuth
   try {
-    console.log("[OAuth] Opening Google login URL:", loginUrl);
     const redirectUri = "calmate://oauth/callback";
     const result = await WebBrowser.openAuthSessionAsync(loginUrl, redirectUri);
-    console.log("[OAuth] WebBrowser result type:", result.type);
 
     if (result.type === "success" && result.url) {
-      console.log("[OAuth] Result URL:", result.url);
       // Parse sessionToken and user from the deep link URL
       // URL format: calmate://oauth/callback?sessionToken=...&user=...
       try {
@@ -72,15 +69,14 @@ export async function startGoogleLogin(): Promise<{
         const sessionToken = url.searchParams.get("sessionToken");
         const userBase64 = url.searchParams.get("user");
         if (sessionToken) {
-          console.log("[OAuth] Session token extracted from result URL");
           return { sessionToken, userBase64 };
         }
       } catch (parseError) {
-        console.error("[OAuth] Failed to parse result URL:", parseError);
+        if (__DEV__) console.error("[OAuth] Failed to parse result URL:", parseError);
       }
     }
   } catch (error) {
-    console.error("[OAuth] Failed to open login URL:", error);
+    if (__DEV__) console.error("[OAuth] Failed to open login URL:", error);
   }
 
   return null;

@@ -1,4 +1,5 @@
 import { COOKIE_NAME, ONE_YEAR_MS } from "../../shared/const.js";
+import { randomBytes } from "crypto";
 import type { Express, Request, Response } from "express";
 import { getUserByOpenId, upsertUser } from "../db";
 import { getSessionCookieOptions } from "./cookies";
@@ -36,6 +37,16 @@ export function registerOAuthRoutes(app: Express) {
       "https://www.googleapis.com/auth/userinfo.profile",
     ].join(" ");
 
+    // Generate random state to prevent CSRF
+    const state = randomBytes(32).toString("hex");
+
+    // Store state in a short-lived httpOnly cookie (10 minutes)
+    const cookieOptions = getSessionCookieOptions(req);
+    res.cookie("google_oauth_state", state, {
+      ...cookieOptions,
+      maxAge: 10 * 60 * 1000, // 10 minutes
+    });
+
     const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     url.searchParams.set("client_id", ENV.googleClientId);
     url.searchParams.set("redirect_uri", ENV.googleRedirectUri);
@@ -43,17 +54,33 @@ export function registerOAuthRoutes(app: Express) {
     url.searchParams.set("scope", SCOPES);
     url.searchParams.set("access_type", "offline");
     url.searchParams.set("prompt", "consent");
+    url.searchParams.set("state", state);
 
     res.redirect(302, url.toString());
   });
 
   app.get("/api/oauth/callback", async (req: Request, res: Response) => {
     const code = getQueryParam(req, "code");
+    const state = getQueryParam(req, "state");
 
     if (!code) {
       res.status(400).json({ error: "code is required" });
       return;
     }
+
+    // Verify OAuth state parameter to prevent CSRF
+    const { parse: parseCookieHeader } = await import("cookie");
+    const cookies = parseCookieHeader(req.headers.cookie || "");
+    const storedState = cookies["google_oauth_state"];
+
+    if (!state || !storedState || state !== storedState) {
+      res.status(403).json({ error: "Invalid OAuth state parameter" });
+      return;
+    }
+
+    // Clear the state cookie
+    const stateCookieOptions = getSessionCookieOptions(req);
+    res.clearCookie("google_oauth_state", { ...stateCookieOptions, maxAge: -1 });
 
     try {
       // Exchange authorization code for tokens with Google
@@ -114,16 +141,12 @@ export function registerOAuthRoutes(app: Express) {
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
 
-      const userAgent = req.headers["user-agent"] || "";
-      console.log("[OAuth] Callback User-Agent:", userAgent);
-
       // Determine if this is a web browser request (not native app).
       const isWebBrowser = req.headers["x-web-preview"] !== undefined;
 
       const APP_SCHEME = "calmate";
       if (!isWebBrowser) {
         // Native app: redirect to calmate deep link
-        console.log("[OAuth] Redirecting to native app deep link");
         const userBase64 = Buffer.from(JSON.stringify(buildUserResponse(user))).toString("base64");
         const deepLinkUrl = new URL(`${APP_SCHEME}://oauth/callback`);
         deepLinkUrl.searchParams.set("sessionToken", sessionToken);

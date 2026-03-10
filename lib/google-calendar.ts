@@ -2,11 +2,23 @@ import { getApiBaseUrl } from "@/constants/oauth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
+import * as Auth from "@/lib/_core/auth";
 
 const selectedCalendarsKey = (userId: string) => `selected_calendar_ids:${userId}`;
 
 function apiBase() {
   return getApiBaseUrl();
+}
+
+async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const headers: Record<string, string> = {
+    ...(options.headers as Record<string, string> || {}),
+  };
+  if (Platform.OS !== "web") {
+    const token = await Auth.getSessionToken();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
+  return fetch(url, { ...options, headers, credentials: "include" });
 }
 
 export interface GoogleCalendar {
@@ -36,7 +48,7 @@ export interface FreeSlot {
 
 export async function checkGoogleConnection(userId: string): Promise<boolean> {
   try {
-    const res = await fetch(`${apiBase()}/api/google/status?userId=${encodeURIComponent(userId)}`);
+    const res = await authFetch(`${apiBase()}/api/google/status?userId=${encodeURIComponent(userId)}`);
     const data = await res.json();
     return data.connected === true;
   } catch {
@@ -67,18 +79,15 @@ export async function startGoogleAuth(userId: string): Promise<boolean> {
   // コールバック後にアプリのディープリンクにリダイレクトされる
   const APP_SCHEME = "calmate";
   const appRedirectUri = `${APP_SCHEME}://google-callback`;
-  console.log("[Google Auth] App redirect URI:", appRedirectUri);
 
   const startUrl = `${base}/api/oauth/google/start?userId=${encodeURIComponent(userId)}&appRedirect=${encodeURIComponent(appRedirectUri)}`;
 
   try {
     const result = await WebBrowser.openAuthSessionAsync(startUrl, appRedirectUri);
-    console.log("[Google Auth] WebBrowser result:", result.type);
 
     if (result.type === "success") {
       // ディープリンクのURLからパラメータを解析
       const url = result.url;
-      console.log("[Google Auth] Callback URL:", url);
       // カスタムスキームのURLは標準URLパーサーで解析できない場合があるので正規表現でパラメータを取得
       const match = url.match(/[?&]googleConnected=([^&]+)/);
       if (match && match[1] === "true") {
@@ -87,13 +96,13 @@ export async function startGoogleAuth(userId: string): Promise<boolean> {
     }
     return false;
   } catch (err) {
-    console.error("[Google Auth] openAuthSessionAsync error:", err);
+    if (__DEV__) console.error("[Google Auth] openAuthSessionAsync error:", err);
     return false;
   }
 }
 
 export async function disconnectGoogle(userId: string): Promise<void> {
-  await fetch(`${apiBase()}/api/google/disconnect`, {
+  await authFetch(`${apiBase()}/api/google/disconnect`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ userId }),
@@ -101,7 +110,7 @@ export async function disconnectGoogle(userId: string): Promise<void> {
 }
 
 export async function fetchCalendars(userId: string): Promise<GoogleCalendar[]> {
-  const res = await fetch(`${apiBase()}/api/google/calendars?userId=${encodeURIComponent(userId)}`);
+  const res = await authFetch(`${apiBase()}/api/google/calendars?userId=${encodeURIComponent(userId)}`);
   if (!res.ok) throw new Error("Failed to fetch calendars");
   const data = await res.json();
   return data.calendars ?? [];
@@ -119,7 +128,7 @@ export async function fetchEvents(
     timeMin: timeMin.toISOString(),
     timeMax: timeMax.toISOString(),
   });
-  const res = await fetch(`${apiBase()}/api/google/events?${params}`);
+  const res = await authFetch(`${apiBase()}/api/google/events?${params}`);
   if (!res.ok) throw new Error("Failed to fetch events");
   const data = await res.json();
   return data.events ?? [];
