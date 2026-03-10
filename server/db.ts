@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, profileCards, InsertProfileCard } from "../drizzle/schema";
+import { InsertUser, users, profileCards, InsertProfileCard, googleTokens, InsertGoogleToken } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -89,7 +89,40 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+// Google Tokens CRUD
+
+export async function getGoogleToken(userId: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(googleTokens).where(eq(googleTokens.userId, userId)).limit(1);
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function upsertGoogleToken(data: { userId: string; accessToken: string; refreshToken?: string; expiresAt: number }) {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot upsert google token: database not available");
+    return;
+  }
+  await db.insert(googleTokens).values({
+    userId: data.userId,
+    accessToken: data.accessToken,
+    refreshToken: data.refreshToken ?? null,
+    expiresAt: data.expiresAt,
+  }).onDuplicateKeyUpdate({
+    set: {
+      accessToken: data.accessToken,
+      ...(data.refreshToken !== undefined ? { refreshToken: data.refreshToken } : {}),
+      expiresAt: data.expiresAt,
+    },
+  });
+}
+
+export async function deleteGoogleToken(userId: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(googleTokens).where(eq(googleTokens.userId, userId));
+}
 
 export async function getProfileCards(userId: number) {
   const db = await getDb();

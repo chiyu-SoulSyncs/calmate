@@ -1,9 +1,11 @@
 import type { Express, Request, Response } from "express";
+import { getGoogleToken, upsertGoogleToken, deleteGoogleToken } from "./db";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
-const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 
-  "https://3000-iql0v1fyldeesdziiefu8-8a69bc03.sg1.manus.computer/api/oauth/google/callback";
+const REDIRECT_URI = process.env.GOOGLE_CALENDAR_REDIRECT_URI ||
+  process.env.GOOGLE_REDIRECT_URI?.replace("/api/oauth/callback", "/api/oauth/google/callback") ||
+  "http://localhost:3000/api/oauth/google/callback";
 
 const SCOPES = [
   "https://www.googleapis.com/auth/calendar.readonly",
@@ -11,18 +13,15 @@ const SCOPES = [
   "https://www.googleapis.com/auth/userinfo.email",
 ].join(" ");
 
-// In-memory token store keyed by userId (for demo; in production use DB)
-const tokenStore = new Map<string, { accessToken: string; refreshToken?: string; expiresAt: number }>();
-
-export function getGoogleTokenForUser(userId: string) {
-  return tokenStore.get(userId) ?? null;
+export async function getGoogleTokenForUser(userId: string) {
+  return await getGoogleToken(userId);
 }
 
-export function setGoogleTokenForUser(
+export async function setGoogleTokenForUser(
   userId: string,
   data: { accessToken: string; refreshToken?: string; expiresAt: number }
 ) {
-  tokenStore.set(userId, data);
+  await upsertGoogleToken({ userId, ...data });
 }
 
 async function refreshAccessToken(refreshToken: string): Promise<{ accessToken: string; expiresAt: number } | null> {
@@ -49,7 +48,7 @@ async function refreshAccessToken(refreshToken: string): Promise<{ accessToken: 
 }
 
 export async function getValidAccessToken(userId: string): Promise<string | null> {
-  const stored = tokenStore.get(userId);
+  const stored = await getGoogleToken(userId);
   if (!stored) return null;
 
   // If token is still valid (with 60s buffer), return it
@@ -61,7 +60,12 @@ export async function getValidAccessToken(userId: string): Promise<string | null
   if (stored.refreshToken) {
     const refreshed = await refreshAccessToken(stored.refreshToken);
     if (refreshed) {
-      tokenStore.set(userId, { ...stored, ...refreshed });
+      await upsertGoogleToken({
+        userId,
+        accessToken: refreshed.accessToken,
+        refreshToken: stored.refreshToken,
+        expiresAt: refreshed.expiresAt,
+      });
       return refreshed.accessToken;
     }
   }
@@ -125,7 +129,7 @@ export function registerGoogleCalendarRoutes(app: Express) {
       }
 
       const tokenData = await tokenRes.json();
-      setGoogleTokenForUser(userId, {
+      await setGoogleTokenForUser(userId, {
         accessToken: tokenData.access_token,
         refreshToken: tokenData.refresh_token,
         expiresAt: Date.now() + (tokenData.expires_in ?? 3600) * 1000,
@@ -184,7 +188,7 @@ export function registerGoogleCalendarRoutes(app: Express) {
         ? expSeconds * 1000  // Unix timestamp (seconds) -> ms
         : Date.now() + 3600 * 1000;  // fallback: 1 hour
 
-      setGoogleTokenForUser(userId, {
+      await setGoogleTokenForUser(userId, {
         accessToken,
         expiresAt,
       });
@@ -288,9 +292,9 @@ export function registerGoogleCalendarRoutes(app: Express) {
   });
 
   // Disconnect Google
-  app.post("/api/google/disconnect", (req: Request, res: Response) => {
+  app.post("/api/google/disconnect", async (req: Request, res: Response) => {
     const { userId } = req.body;
-    if (userId) tokenStore.delete(userId);
+    if (userId) await deleteGoogleToken(userId);
     res.json({ success: true });
   });
 

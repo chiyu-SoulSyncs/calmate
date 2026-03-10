@@ -29,11 +29,9 @@ export function useAuth(options?: UseAuthOptions) {
         if (apiUser) {
           const userInfo: Auth.User = {
             id: apiUser.id,
-            openId: apiUser.openId,
+            googleId: apiUser.googleId,
             name: apiUser.name,
             email: apiUser.email,
-            loginMethod: apiUser.loginMethod,
-            lastSignedIn: new Date(apiUser.lastSignedIn),
           };
           setUser(userInfo);
           // Cache user info in localStorage for faster subsequent loads

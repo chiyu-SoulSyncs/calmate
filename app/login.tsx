@@ -5,7 +5,7 @@ import * as Haptics from "expo-haptics";
 import { ScreenContainer } from "@/components/screen-container";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
-import { startOAuthLogin } from "@/constants/oauth";
+import { startGoogleLogin } from "@/constants/oauth";
 import * as Auth from "@/lib/_core/auth";
 import { useAuthContext } from "@/lib/auth-context";
 
@@ -20,7 +20,7 @@ export default function LoginScreen() {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsLoading(true);
     try {
-      const result = await startOAuthLogin();
+      const result = await startGoogleLogin();
       if (result?.sessionToken) {
         // Save session token to SecureStore
         await Auth.setSessionToken(result.sessionToken);
@@ -31,11 +31,9 @@ export default function LoginScreen() {
             const userObj = JSON.parse(userJson);
             const userInfo: Auth.User = {
               id: userObj.id,
-              openId: userObj.openId,
+              googleId: userObj.googleId ?? null,
               name: userObj.name ?? null,
               email: userObj.email ?? null,
-              loginMethod: userObj.loginMethod ?? null,
-              lastSignedIn: new Date(userObj.lastSignedIn ?? Date.now()),
             };
             await Auth.setUserInfo(userInfo);
           } catch (e) {
@@ -74,10 +72,10 @@ export default function LoginScreen() {
             <IconSymbol name="calendar.badge.clock" size={52} color={c.primary} />
           </View>
           <Text style={{ fontSize: 28, fontWeight: "800", color: c.foreground, textAlign: "center" }}>
-            スケジュール{"\n"}アシスタント
+            Calmate
           </Text>
           <Text style={{ fontSize: 16, color: c.muted, textAlign: "center", lineHeight: 24 }}>
-            Googleカレンダーと連携して{"\n"}空き時間を自動で見つけます
+            Googleカレンダーと連携して{"\n"}空き時間を簡単に見つけよう
           </Text>
 
           {/* Features */}

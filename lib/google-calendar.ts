@@ -65,12 +65,7 @@ export async function startGoogleAuth(userId: string): Promise<boolean> {
 
   // Native: expo-web-browserを使用してシステムブラウザで認証
   // コールバック後にアプリのディープリンクにリダイレクトされる
-  //
-  // 重要: Expo Goでは Linking.createURL が exp:// スキームを生成するが、
-  // ManusのOAuthシステムは exp:// を許可していない。
-  // 代わりにアプリのカスタムスキーム (manus*) を直接指定する。
-  // スキームは app.config.ts の scheme 値と一致させる必要がある。
-  const APP_SCHEME = "manus20260304040150";
+  const APP_SCHEME = "calmate";
   const appRedirectUri = `${APP_SCHEME}://google-callback`;
   console.log("[Google Auth] App redirect URI:", appRedirectUri);
 

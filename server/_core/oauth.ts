@@ -2,42 +2,12 @@ import { COOKIE_NAME, ONE_YEAR_MS } from "../../shared/const.js";
 import type { Express, Request, Response } from "express";
 import { getUserByOpenId, upsertUser } from "../db";
 import { getSessionCookieOptions } from "./cookies";
+import { ENV } from "./env";
 import { sdk } from "./sdk";
 
 function getQueryParam(req: Request, key: string): string | undefined {
   const value = req.query[key];
   return typeof value === "string" ? value : undefined;
-}
-
-async function syncUser(userInfo: {
-  openId?: string | null;
-  name?: string | null;
-  email?: string | null;
-  loginMethod?: string | null;
-  platform?: string | null;
-}) {
-  if (!userInfo.openId) {
-    throw new Error("openId missing from user info");
-  }
-
-  const lastSignedIn = new Date();
-  await upsertUser({
-    openId: userInfo.openId,
-    name: userInfo.name || null,
-    email: userInfo.email ?? null,
-    loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
-    lastSignedIn,
-  });
-  const saved = await getUserByOpenId(userInfo.openId);
-  return (
-    saved ?? {
-      openId: userInfo.openId,
-      name: userInfo.name,
-      email: userInfo.email,
-      loginMethod: userInfo.loginMethod ?? null,
-      lastSignedIn,
-    }
-  );
 }
 
 function buildUserResponse(
@@ -47,36 +17,97 @@ function buildUserResponse(
         openId: string;
         name?: string | null;
         email?: string | null;
-        loginMethod?: string | null;
-        lastSignedIn?: Date | null;
       },
 ) {
   return {
     id: (user as any)?.id ?? null,
-    openId: user?.openId ?? null,
+    googleId: user?.openId ?? null,
     name: user?.name ?? null,
     email: user?.email ?? null,
-    loginMethod: user?.loginMethod ?? null,
-    lastSignedIn: (user?.lastSignedIn ?? new Date()).toISOString(),
   };
 }
 
 export function registerOAuthRoutes(app: Express) {
+  // Start Google OAuth login flow
+  app.get("/api/oauth/google/login", (req: Request, res: Response) => {
+    const SCOPES = [
+      "openid",
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/userinfo.profile",
+    ].join(" ");
+
+    const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+    url.searchParams.set("client_id", ENV.googleClientId);
+    url.searchParams.set("redirect_uri", ENV.googleRedirectUri);
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("scope", SCOPES);
+    url.searchParams.set("access_type", "offline");
+    url.searchParams.set("prompt", "consent");
+
+    res.redirect(302, url.toString());
+  });
+
   app.get("/api/oauth/callback", async (req: Request, res: Response) => {
     const code = getQueryParam(req, "code");
-    const state = getQueryParam(req, "state");
 
-    if (!code || !state) {
-      res.status(400).json({ error: "code and state are required" });
+    if (!code) {
+      res.status(400).json({ error: "code is required" });
       return;
     }
 
     try {
-      const tokenResponse = await sdk.exchangeCodeForToken(code, state);
-      const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
-      const user = await syncUser(userInfo);
-      const sessionToken = await sdk.createSessionToken(userInfo.openId!, {
-        name: userInfo.name || "",
+      // Exchange authorization code for tokens with Google
+      const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          code,
+          client_id: ENV.googleClientId,
+          client_secret: ENV.googleClientSecret,
+          redirect_uri: ENV.googleRedirectUri,
+          grant_type: "authorization_code",
+        }),
+      });
+
+      if (!tokenRes.ok) {
+        const err = await tokenRes.text();
+        console.error("[OAuth] Google token exchange failed:", err);
+        res.status(500).json({ error: "Token exchange failed" });
+        return;
+      }
+
+      const tokenData = await tokenRes.json();
+
+      // Get user info from Google
+      const userinfoRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      });
+
+      if (!userinfoRes.ok) {
+        console.error("[OAuth] Failed to fetch Google userinfo");
+        res.status(500).json({ error: "Failed to get user info" });
+        return;
+      }
+
+      const userinfo = await userinfoRes.json();
+      // userinfo contains: sub, name, email, picture, etc.
+      const googleId = userinfo.sub as string;
+      const name = (userinfo.name as string) || "";
+      const email = (userinfo.email as string) || null;
+
+      // Upsert user in DB using Google sub as openId
+      const lastSignedIn = new Date();
+      await upsertUser({
+        openId: googleId,
+        name: name || null,
+        email,
+        loginMethod: "google",
+        lastSignedIn,
+      });
+      const user = await getUserByOpenId(googleId);
+
+      // Create JWT session token
+      const sessionToken = await sdk.createSessionToken(googleId, name, {
         expiresInMs: ONE_YEAR_MS,
       });
 
@@ -86,20 +117,12 @@ export function registerOAuthRoutes(app: Express) {
       const userAgent = req.headers["user-agent"] || "";
       console.log("[OAuth] Callback User-Agent:", userAgent);
 
-      // Always redirect to the manus* deep link with session token.
-      // - On native (Expo Go / standalone): expo-web-browser detects the manus* scheme
-      //   and automatically closes the browser, returning the user to the app.
-      //   The app's oauth/callback screen then reads sessionToken from the URL params.
-      // - On web: the browser cannot open manus:// URLs, so we fall back to the web frontend.
-      //   We detect web by checking if the User-Agent looks like a desktop/web browser.
       // Determine if this is a web browser request (not native app).
-      // We use the x-web-preview header as a signal that the request comes from the web preview iframe.
-      // All other requests (including iOS Safari opened by openAuthSessionAsync) are treated as native.
       const isWebBrowser = req.headers["x-web-preview"] !== undefined;
 
-      const APP_SCHEME = "manus20260304040150";
+      const APP_SCHEME = "calmate";
       if (!isWebBrowser) {
-        // Native app or iOS Safari via openAuthSessionAsync: redirect to manus* deep link
+        // Native app: redirect to calmate deep link
         console.log("[OAuth] Redirecting to native app deep link");
         const userBase64 = Buffer.from(JSON.stringify(buildUserResponse(user))).toString("base64");
         const deepLinkUrl = new URL(`${APP_SCHEME}://oauth/callback`);
@@ -109,8 +132,7 @@ export function registerOAuthRoutes(app: Express) {
         return;
       }
 
-      // Web browser: redirect to the frontend URL (Expo web on port 8081)
-      // Cookie is set with parent domain so it works across both 3000 and 8081 subdomains
+      // Web browser: redirect to the frontend URL
       const frontendUrl =
         process.env.EXPO_WEB_PREVIEW_URL ||
         process.env.EXPO_PACKAGER_PROXY_URL ||
@@ -119,38 +141,6 @@ export function registerOAuthRoutes(app: Express) {
     } catch (error) {
       console.error("[OAuth] Callback failed", error);
       res.status(500).json({ error: "OAuth callback failed" });
-    }
-  });
-
-  app.get("/api/oauth/mobile", async (req: Request, res: Response) => {
-    const code = getQueryParam(req, "code");
-    const state = getQueryParam(req, "state");
-
-    if (!code || !state) {
-      res.status(400).json({ error: "code and state are required" });
-      return;
-    }
-
-    try {
-      const tokenResponse = await sdk.exchangeCodeForToken(code, state);
-      const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
-      const user = await syncUser(userInfo);
-
-      const sessionToken = await sdk.createSessionToken(userInfo.openId!, {
-        name: userInfo.name || "",
-        expiresInMs: ONE_YEAR_MS,
-      });
-
-      const cookieOptions = getSessionCookieOptions(req);
-      res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-
-      res.json({
-        app_session_id: sessionToken,
-        user: buildUserResponse(user),
-      });
-    } catch (error) {
-      console.error("[OAuth] Mobile exchange failed", error);
-      res.status(500).json({ error: "OAuth mobile exchange failed" });
     }
   });
 
@@ -172,8 +162,6 @@ export function registerOAuthRoutes(app: Express) {
   });
 
   // Establish session cookie from Bearer token
-  // Used by iframe preview: frontend receives token via postMessage, then calls this endpoint
-  // to get a proper Set-Cookie response from the backend (3000-xxx domain)
   app.post("/api/auth/session", async (req: Request, res: Response) => {
     try {
       // Authenticate using Bearer token from Authorization header
@@ -187,7 +175,7 @@ export function registerOAuthRoutes(app: Express) {
       }
       const token = authHeader.slice("Bearer ".length).trim();
 
-      // Set cookie for this domain (3000-xxx)
+      // Set cookie for this domain
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: ONE_YEAR_MS });
 

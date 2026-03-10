@@ -30,7 +30,7 @@ vi.mock("@/lib/_core/api", () => ({
 // Mock @/constants/oauth
 vi.mock("@/constants/oauth", () => ({
   SESSION_TOKEN_KEY: "app_session_token",
-  USER_INFO_KEY: "manus-runtime-user-info",
+  USER_INFO_KEY: "calmate-user-info",
 }));
 
 import * as SecureStore from "expo-secure-store";
@@ -71,11 +71,9 @@ describe("Auth utilities", () => {
   it("getUserInfo returns parsed user when stored", async () => {
     const mockUser = {
       id: 1,
-      openId: "test-open-id",
+      googleId: "google-sub-123",
       name: "Test User",
       email: "test@example.com",
-      loginMethod: "google",
-      lastSignedIn: new Date().toISOString(),
     };
     vi.mocked(SecureStore.getItemAsync).mockResolvedValue(JSON.stringify(mockUser));
     const user = await Auth.getUserInfo();
@@ -88,15 +86,13 @@ describe("Auth utilities", () => {
     vi.mocked(SecureStore.setItemAsync).mockResolvedValue(undefined);
     const mockUser: Auth.User = {
       id: 1,
-      openId: "test-open-id",
+      googleId: "google-sub-123",
       name: "Test User",
       email: "test@example.com",
-      loginMethod: "google",
-      lastSignedIn: new Date(),
     };
     await Auth.setUserInfo(mockUser);
     expect(SecureStore.setItemAsync).toHaveBeenCalledWith(
-      "manus-runtime-user-info",
+      "calmate-user-info",
       expect.stringContaining("test@example.com")
     );
   });
@@ -104,7 +100,7 @@ describe("Auth utilities", () => {
   it("clearUserInfo removes user from SecureStore", async () => {
     vi.mocked(SecureStore.deleteItemAsync).mockResolvedValue(undefined);
     await Auth.clearUserInfo();
-    expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith("manus-runtime-user-info");
+    expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith("calmate-user-info");
   });
 
   it("removeSessionToken removes token from SecureStore", async () => {
@@ -116,7 +112,6 @@ describe("Auth utilities", () => {
 
 describe("Google Calendar auth flow", () => {
   it("checkGoogleConnection returns false when server returns connected: false", async () => {
-    // This is a unit test for the logic, not the actual API call
     const mockResponse = { connected: false };
     expect(mockResponse.connected).toBe(false);
   });
@@ -128,7 +123,6 @@ describe("Google Calendar auth flow", () => {
 
   it("startGoogleAuth returns false when openAuthSessionAsync returns cancel", () => {
     const mockResult = { type: "cancel" };
-    // When result.type !== "success", should return false
     const success = mockResult.type === "success";
     expect(success).toBe(false);
   });
@@ -136,7 +130,7 @@ describe("Google Calendar auth flow", () => {
   it("startGoogleAuth returns true when openAuthSessionAsync returns success with googleConnected=true", () => {
     const mockResult = {
       type: "success",
-      url: "manus20260304040150://google-callback?googleConnected=true&userId=1",
+      url: "calmate://google-callback?googleConnected=true&userId=1",
     };
     const match = mockResult.url.match(/[?&]googleConnected=([^&]+)/);
     const success = mockResult.type === "success" && match !== null && match[1] === "true";

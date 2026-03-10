@@ -48,11 +48,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (apiUser) {
           const userInfo: Auth.User = {
             id: apiUser.id,
-            openId: apiUser.openId,
+            googleId: apiUser.googleId,
             name: apiUser.name,
             email: apiUser.email,
-            loginMethod: apiUser.loginMethod,
-            lastSignedIn: new Date(apiUser.lastSignedIn),
           };
           setUser(userInfo);
           await Auth.setUserInfo(userInfo);
