@@ -193,6 +193,8 @@ export default function GreetingScreen() {
   const [reminderTitle, setReminderTitle] = useState("");
   const [reminderLocation, setReminderLocation] = useState("");
   const [reminderUrl, setReminderUrl] = useState("");
+  const [reminderDay, setReminderDay] = useState<"today" | "tomorrow">("tomorrow");
+  const [showReplyHelp, setShowReplyHelp] = useState(false);
 
   // 次回案内シーン選択時に転送データを自動読み込み
   React.useEffect(() => {
@@ -255,6 +257,7 @@ export default function GreetingScreen() {
       location: scene === "next" ? (location.trim() || undefined) : (scene === "reminder" ? (reminderLocation.trim() || undefined) : undefined),
       meetingUrl: scene === "next" ? (meetingUrlNext.trim() || undefined) : (scene === "reminder" ? (reminderUrl.trim() || undefined) : undefined),
       reminderTitle: scene === "reminder" ? (reminderTitle.trim() || undefined) : undefined,
+      reminderDay: scene === "reminder" ? reminderDay : undefined,
       recipientName: recipientName.trim() || undefined,
       includeSignature,
       replyStyle,
@@ -266,7 +269,7 @@ export default function GreetingScreen() {
     setEditedMessage(null);
     setIsEditing(false);
     if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [selectedCard, scene, tone, recipientName, meetingPurpose, meetingDate, meetingTime, meetingLocation, meetingUrl, nextAction, theirAction, scheduleText, mtgTitle, location, meetingUrlNext, reminderTitle, reminderLocation, reminderUrl, includeSignature, replyStyle, replySubtype, confirmedDate, newScheduleText]);
+  }, [selectedCard, scene, tone, recipientName, meetingPurpose, meetingDate, meetingTime, meetingLocation, meetingUrl, nextAction, theirAction, scheduleText, mtgTitle, location, meetingUrlNext, reminderTitle, reminderDay, reminderLocation, reminderUrl, includeSignature, replyStyle, replySubtype, confirmedDate, newScheduleText]);
 
   const displayMessage = editedMessage ?? generated;
 
@@ -278,7 +281,7 @@ export default function GreetingScreen() {
     setTimeout(() => setCopied(false), 2000);
   }, [displayMessage]);
 
-  const needsMeeting = scene === "reminder" || scene === "thanks";
+  const needsMeeting = scene === "thanks";
   const needsRecipient = scene === "intro";
 
   return (
@@ -456,8 +459,50 @@ export default function GreetingScreen() {
 
           {/* 返信スタイル（replyシーンのみ） */}
           {scene === "reply" && (
-            <View style={{ marginTop: includeSignature ? 0 : 0 }}>
-              <Text style={{ fontSize: 13, fontWeight: "700", color: c.foreground, marginBottom: 8 }}>返信スタイル</Text>
+            <View>
+              <View style={[st.row, { marginBottom: 8, gap: 6 }]}>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: c.foreground }}>返信スタイル</Text>
+                <Pressable
+                  style={({ pressed }) => [{
+                    width: 20, height: 20, borderRadius: 10, borderWidth: 1.5,
+                    borderColor: showReplyHelp ? c.primary : c.muted,
+                    backgroundColor: showReplyHelp ? c.tealLight : "transparent",
+                    alignItems: "center", justifyContent: "center",
+                  }, pressed && { opacity: 0.7 }]}
+                  onPress={() => setShowReplyHelp(v => !v)}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: "800", color: showReplyHelp ? c.primary : c.muted }}>?</Text>
+                </Pressable>
+              </View>
+              {showReplyHelp && (
+                <View style={{ backgroundColor: c.tealLight, borderRadius: 12, padding: 14, marginBottom: 10 }}>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: c.foreground, marginBottom: 8 }}>使い分けガイド</Text>
+                  <View style={{ borderRadius: 8, overflow: "hidden", borderWidth: 1, borderColor: c.border }}>
+                    {/* ヘッダー */}
+                    <View style={[st.row, { backgroundColor: c.primary }]}>
+                      <Text style={{ flex: 1, fontSize: 11, fontWeight: "700", color: "#fff", padding: 8, textAlign: "center" }}> </Text>
+                      <Text style={{ flex: 2, fontSize: 11, fontWeight: "700", color: "#fff", padding: 8, textAlign: "center" }}>かしこまりました</Text>
+                      <Text style={{ flex: 2, fontSize: 11, fontWeight: "700", color: "#fff", padding: 8, textAlign: "center" }}>承知いたしました</Text>
+                    </View>
+                    {/* 行 */}
+                    {[
+                      { label: "敬語の種類", a: "謙譲語", b: "丁寧語" },
+                      { label: "丁寧さ", a: "より丁寧", b: "丁寧" },
+                      { label: "使う相手", a: "お客様・目上", b: "上司・社内" },
+                      { label: "印象", a: "かしこまった", b: "柔らかい" },
+                    ].map((row, i) => (
+                      <View key={i} style={[st.row, { borderTopWidth: 1, borderTopColor: c.border, backgroundColor: i % 2 === 0 ? "#fff" : c.background }]}>
+                        <Text style={{ flex: 1, fontSize: 11, fontWeight: "600", color: c.foreground, padding: 8 }}>{row.label}</Text>
+                        <Text style={{ flex: 2, fontSize: 11, color: c.foreground, padding: 8, textAlign: "center" }}>{row.a}</Text>
+                        <Text style={{ flex: 2, fontSize: 11, color: c.foreground, padding: 8, textAlign: "center" }}>{row.b}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <Text style={{ fontSize: 11, color: c.muted, marginTop: 8, lineHeight: 16 }}>
+                    迷ったら「かしこまりました」を選べばOK！{"\n"}社内やカジュアルな関係なら「承知いたしました」がおすすめです。
+                  </Text>
+                </View>
+              )}
               <View style={[st.row, { gap: 8 }]}>
                 {(["kashikomarimashita", "shochishimashita"] as const).map((style) => (
                   <Pressable
@@ -542,13 +587,34 @@ export default function GreetingScreen() {
           </View>
         )}
 
-        {/* リマインドシーン: MTGタイトル・場所/URL */}
+        {/* リマインドシーン: 今日/明日選択 + MTG情報 */}
         {scene === "reminder" && (
           <View style={[st.card, { backgroundColor: c.surface, borderColor: c.border, gap: 10 }]}>
-            <Text style={{ fontSize: 14, fontWeight: "700", color: c.foreground }}>MTG情報（任意）</Text>
+            <Text style={{ fontSize: 14, fontWeight: "700", color: c.foreground }}>いつの会議？</Text>
+            <View style={[st.row, { gap: 8 }]}>
+              {(["today", "tomorrow"] as const).map((day) => {
+                const isSelected = reminderDay === day;
+                const label = day === "today" ? "今日" : "明日";
+                return (
+                  <Pressable
+                    key={day}
+                    style={({ pressed }) => [{
+                      flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: "center",
+                      borderWidth: 2,
+                      borderColor: isSelected ? c.primary : c.border,
+                      backgroundColor: isSelected ? c.primary : c.background,
+                    }, pressed && { opacity: 0.7 }]}
+                    onPress={() => setReminderDay(day)}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: isSelected ? "#fff" : c.muted }}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={{ fontSize: 14, fontWeight: "700", color: c.foreground, marginTop: 4 }}>MTG情報（任意）</Text>
             {/* MTGタイトル */}
             <View style={{ gap: 6 }}>
-              <Text style={{ fontSize: 12, color: c.muted }}>MTGタイトル</Text>
+              <Text style={{ fontSize: 12, color: c.muted }}>件名</Text>
               <TextInput
                 value={reminderTitle}
                 onChangeText={setReminderTitle}
@@ -557,6 +623,19 @@ export default function GreetingScreen() {
                 returnKeyType="done"
                 style={[st.input, { color: c.foreground, backgroundColor: c.background, borderColor: c.border }]}
               />
+            </View>
+            {/* 日付・時間 */}
+            <View style={[st.row, { gap: 8 }]}>
+              <View style={{ flex: 1, gap: 6 }}>
+                <Text style={{ fontSize: 12, color: c.muted }}>日付</Text>
+                <TextInput value={meetingDate} onChangeText={setMeetingDate} placeholder="例: 3月12日（木）" placeholderTextColor={c.muted}
+                  style={[st.input, { color: c.foreground, backgroundColor: c.background, borderColor: c.border }]} />
+              </View>
+              <View style={{ flex: 1, gap: 6 }}>
+                <Text style={{ fontSize: 12, color: c.muted }}>時間</Text>
+                <TextInput value={meetingTime} onChangeText={setMeetingTime} placeholder="例: 19:00〜20:00" placeholderTextColor={c.muted}
+                  style={[st.input, { color: c.foreground, backgroundColor: c.background, borderColor: c.border }]} />
+              </View>
             </View>
             {/* 場所 */}
             <View style={{ gap: 6 }}>

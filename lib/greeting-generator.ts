@@ -69,6 +69,8 @@ export interface GenerateGreetingOptions {
   meetingUrl?: string;
   /** リマインドシーン用: MTGタイトル */
   reminderTitle?: string;
+  /** リマインドシーン用: 会議が今日か明日か */
+  reminderDay?: "today" | "tomorrow";
   recipientName?: string;
   /** 署名を末尾に付けるかどうか（デフォルト: true） */
   includeSignature?: boolean;
@@ -160,7 +162,8 @@ function meetingBlock(meeting: MeetingInfo, extraLocation?: string, extraTitle?:
   const lines: string[] = [];
   if (extraTitle?.trim()) lines.push(`■件名：${extraTitle.trim()}`);
   if (meeting.purpose) lines.push(`■目的：${meeting.purpose}`);
-  if (meeting.date && meeting.time) lines.push(`■日時：${meeting.date}⋅${meeting.time}`);
+  if (meeting.date) lines.push(`■日付：${meeting.date}`);
+  if (meeting.time) lines.push(`■時間：${meeting.time}`);
   const loc = extraLocation?.trim() || meeting.location;
   if (loc) lines.push(`■場所：${loc.trim()}`);
   const url = extraUrl?.trim() || meeting.url;
@@ -199,14 +202,14 @@ function buildThanks(opts: GenerateGreetingOptions): string {
   if (tone === "formal") {
     // ビジネス丁寧語：冒頭に自己紹介あり
     const greet = openingGreeting(tone, company, name);
-    let body = `${greet}\n\n本日は、お打ち合わせのお時間をいただき、誠にありがとうございました。\n打ち合わせで決まった内容を以下にまとめましたので、ご確認いただけますと幸いです。`;
+    let body = `${greet}\n\n本日はお忙しい中、お打ち合わせのお時間をいただき、誠にありがとうございました。\n打ち合わせの内容を以下にまとめましたので、ご確認いただけますと幸いです。`;
     if (meeting) {
       const block = meetingBlock(meeting);
       if (block) body += `\n\n【次回会議】\n${block}`;
-      if (meeting.nextAction) body += `\n\n【弊社で対応する事】\n${meeting.nextAction}`;
-      if (meeting.theirAction) body += `\n\n【貴社にご対応頂きたいこと】\n▼下記のご対応をお願いいたします。\n${meeting.theirAction}`;
+      if (meeting.nextAction) body += `\n\n【弊社にて対応いたします】\n${meeting.nextAction}`;
+      if (meeting.theirAction) body += `\n\n【ご対応をお願いしたい事項】\n${meeting.theirAction}`;
     }
-    body += `\n\nその他、ご不明な点やご要望などございましたら、何なりとお申し付けくださいませ。\n${closing(tone)}${sig}`;
+    body += `\n\nご不明な点やご要望などございましたら、お気軽にお申し付けくださいませ。\n${closing(tone)}${sig}`;
     return body;
   }
   if (tone === "casual") {
@@ -224,59 +227,67 @@ function buildThanks(opts: GenerateGreetingOptions): string {
   }
   // タメ口：LINEでも使いやすい短い形式（自己紹介なし）
   let body = `さっきはありがとう！`;
-  if (meeting?.nextAction) body += `\n\n【やること】\n${meeting.nextAction}`;
-  body += `\n\n${closing(tone)}${sig}`;
+  if (meeting) {
+    const lines: string[] = [];
+    if (meeting.purpose) lines.push(`■目的：${meeting.purpose}`);
+    if (meeting.date) lines.push(`■日付：${meeting.date}`);
+    if (meeting.time) lines.push(`■時間：${meeting.time}`);
+    if (meeting.location) lines.push(`■場所：${meeting.location}`);
+    if (meeting.url) lines.push(`■URL：${meeting.url}`);
+    if (lines.length > 0) body += `\n\n【次回会議】\n${lines.join("\n")}`;
+    if (meeting.nextAction) body += `\n\n【こちらで対応すること】\n${meeting.nextAction}`;
+    if (meeting.theirAction) body += `\n\n【対応してほしいこと】\n${meeting.theirAction}`;
+  }
+  body += `\n\n次回もよろしくお願いします！${sig}`;
   return body;
 }
 
 function buildReminder(opts: GenerateGreetingOptions): string {
-  const { profile, tone, meeting, location, meetingUrl, reminderTitle, includeSignature = true } = opts;
+  const { profile, tone, meeting, location, meetingUrl, reminderTitle, reminderDay = "tomorrow", includeSignature = true } = opts;
   const company = profile.company ?? "";
   const name = profile.name;
   const greet = openingGreeting(tone, company, name);
   const sig = maybeSignature(profile, tone, includeSignature);
+  const dayLabel = reminderDay === "today" ? "本日" : "明日";
+
+  const detailBlock = (loc?: string, url?: string, title?: string): string => {
+    const lines: string[] = [];
+    if (title?.trim()) lines.push(`■件名：${title.trim()}`);
+    if (meeting?.date) lines.push(`■日付：${meeting.date}`);
+    if (meeting?.time) lines.push(`■時間：${meeting.time}`);
+    if (loc?.trim()) lines.push(`■場所：${loc.trim()}`);
+    if (url?.trim()) lines.push(`■URL：${url.trim()}`);
+    return lines.length > 0 ? lines.join("\n") : "";
+  };
 
   if (tone === "formal") {
-    let body = `${greet}\n\n次回のお打ち合わせについて、下記の通りご連絡申し上げます。`;
-    if (meeting) {
-      const block = meetingBlock(meeting, location, reminderTitle, meetingUrl);
-      if (block) body += `\n\n${block}`;
-    } else if (location || meetingUrl || reminderTitle) {
-      const lines: string[] = [];
-      if (reminderTitle?.trim()) lines.push(`■件名：${reminderTitle.trim()}`);
-      if (location?.trim()) lines.push(`■場所：${location.trim()}`);
-      if (meetingUrl?.trim()) lines.push(`■URL：${meetingUrl.trim()}`);
-      body += `\n\n${lines.join("\n")}`;
-    }
-    body += `\n\nご不明点やご質問等ございましたら、お気軽にお申し付けくださいませ。\n${closing(tone)}${sig}`;
+    const intro = reminderDay === "today"
+      ? `${dayLabel}のお打ち合わせについて、確認のご連絡を申し上げます。`
+      : `お日にちが近づいてまいりましたので、${dayLabel}のお打ち合わせについてご連絡いたします。`;
+    let body = `${greet}\n\n${intro}\n下記の通りご確認くださいますようお願いいたします。`;
+    const block = detailBlock(location, meetingUrl, reminderTitle);
+    if (block) body += `\n\n${block}`;
+    body += `\n\n${dayLabel}はどうぞよろしくお願いいたします。${sig}`;
     return body;
   }
   if (tone === "casual") {
-    let body = `${greet}\n\n次回のお打ち合わせについてご連絡です！`;
-    if (meeting) {
-      const block = meetingBlock(meeting, location, reminderTitle, meetingUrl);
-      if (block) body += `\n\n${block}`;
-    } else if (location || meetingUrl || reminderTitle) {
-      const lines: string[] = [];
-      if (reminderTitle?.trim()) lines.push(`■件名：${reminderTitle.trim()}`);
-      if (location?.trim()) lines.push(`■場所：${location.trim()}`);
-      if (meetingUrl?.trim()) lines.push(`■URL：${meetingUrl.trim()}`);
-      body += `\n\n${lines.join("\n")}`;
-    }
-    body += `\n\n${closing(tone)}${sig}`;
+    let body = `${greet}\n\n${dayLabel}のお打ち合わせのリマインドです！`;
+    const block = detailBlock(location, meetingUrl, reminderTitle);
+    if (block) body += `\n\n${block}`;
+    body += `\n\n${dayLabel}はよろしくお願いします！${sig}`;
     return body;
   }
-  let body = `次回の打ち合わせの件！`;
-  if (meeting) {
-    if (meeting.date && meeting.time) body += `\n● ${meeting.date}⋅${meeting.time}`;
-    if (location?.trim()) body += `\n📍 ${location.trim()}`;
-    const url = meetingUrl?.trim() || meeting.url;
-    if (url) body += `\n🔗 ${url}`;
-  } else {
-    if (location?.trim()) body += `\n📍 ${location.trim()}`;
-    if (meetingUrl?.trim()) body += `\n🔗 ${meetingUrl.trim()}`;
-  }
-  body += `\n\n${closing(tone)}${sig}`;
+  const title = reminderTitle?.trim() || "打ち合わせ";
+  let body = `${dayLabel}の${title}のリマインドです！`;
+  const lines: string[] = [];
+  if (reminderTitle?.trim()) lines.push(`■件名：${reminderTitle.trim()}`);
+  if (meeting?.date) lines.push(`■日付：${meeting.date}`);
+  if (meeting?.time) lines.push(`■時間：${meeting.time}`);
+  if (location?.trim()) lines.push(`■場所：${location.trim()}`);
+  const url = meetingUrl?.trim() || meeting?.url;
+  if (url) lines.push(`■URL：${url}`);
+  if (lines.length > 0) body += `\n\n${lines.join("\n")}`;
+  body += `\n\nよろしくね！${sig}`;
   return body;
 }
 
@@ -298,12 +309,12 @@ function buildNext(opts: GenerateGreetingOptions): string {
   const detailBlock = (titleLine || locationLine || urlLine) ? `${titleLine}${locationLine}${urlLine}\n\n` : "";
 
   if (tone === "formal") {
-    return `${greet}\n\n次回のお打ち合わせ日程を設定させていただきたく、ご連絡いたしました。\n\n${detailBlock}以下の日時でご都合のよいお時間はございますでしょうか。\nお手数ですが、ご確認いただけますと幸いです。\n\n${slotsBlock}\n\nその他、ご不明点やご要望などございましたら、何なりとお申し付けくださいませ。\n${closing(tone)}${sig}`;
+    return `${greet}\n\n次回のお打ち合わせの日程につきまして、ご相談させていただきたくご連絡いたしました。\n\n${detailBlock}以下の日時でご都合のよろしい日はございますでしょうか。\nお手数ですが、ご確認いただけますと幸いです。\n\n${slotsBlock}\n\nご不明点やご要望などございましたら、お気軽にお申し付けくださいませ。\n${closing(tone)}${sig}`;
   }
   if (tone === "casual") {
     return `${greet}\n\n次回の打ち合わせ日程についてご連絡です！\n\n${detailBlock}以下の日程でご都合はいかがでしょうか？\n\n${slotsBlock}\n\nご確認よろしくお願いします！${sig}`;
   }
-  return `次回の日程なんだけど、どれかいける？\n\n${detailBlock}${slotsBlock}\n\n${closing(tone)}${sig}`;
+  return `次回の日程なんだけど、\nどれか行ける日あるかな？\n\n${detailBlock}${slotsBlock}\n\n確認よろしくお願いします！${sig}`;
 }
 
 function buildReply(opts: GenerateGreetingOptions): string {
@@ -316,7 +327,7 @@ function buildReply(opts: GenerateGreetingOptions): string {
     includeSignature = true,
   } = opts;
   const sig = maybeSignature(profile, tone, includeSignature);
-  const ack = replyStyle === "shochishimashita" ? "承知しました。" : "かしこまりました。";
+  const ack = replyStyle === "shochishimashita" ? "承知いたしました。" : "かしこまりました。";
   const ackCasual = replyStyle === "shochishimashita" ? "承知しました！" : "了解しました！";
 
   // 日程確定
@@ -337,10 +348,10 @@ function buildReply(opts: GenerateGreetingOptions): string {
   if (replySubtype === "reschedule") {
     const slotsBlock = newScheduleText?.trim() ? `\n\n${newScheduleText.trim()}` : "";
     if (tone === "formal") {
-      return `ご連絡ありがとうございます。\nご都合が合わず、大変申し訳ございません。\n改めて以下の日程でご都合はいかがでしょうか。${slotsBlock}\n\nお手数ですが、ご確認いただけますと幸いです。\n${closing(tone)}${sig}`;
+      return `ご連絡ありがとうございます。\nあいにくご提示いただいた日程での調整が難しく、大変申し訳ございません。\n改めて以下の日程でご都合はいかがでしょうか。${slotsBlock}\n\nお手数をおかけいたしますが、ご確認いただけますと幸いです。\n${closing(tone)}${sig}`;
     }
     if (tone === "casual") {
-      return `ご連絡ありがとうございます！\n日程が合わず申し訳ございません。\n改めて候補日程をご提案させていただきます！${slotsBlock}\n\n${closing(tone)}${sig}`;
+      return `ご連絡ありがとうございます！\nあいにく日程が合わず申し訳ありません。\n改めて候補日程をお送りします！${slotsBlock}\n\nご確認よろしくお願いします！${sig}`;
     }
     return `日程合わなかった、ごめん！\n別の候補だとこれはどう？${slotsBlock}\n\n${closing(tone)}${sig}`;
   }
@@ -348,10 +359,10 @@ function buildReply(opts: GenerateGreetingOptions): string {
   // 断られた
   if (replySubtype === "declined") {
     if (tone === "formal") {
-      return `ご連絡ありがとうございます。\nご丁重なお返事をいただき、誠にありがとうございます。\nまたの機会にご一緒できますことを楽しみにしております。\n今後ともどうぞよろしくお願いいたします。${sig}`;
+      return `ご連絡いただき、誠にありがとうございます。\nご丁寧にご返信くださり、重ねてお礼申し上げます。\nまたの機会にご一緒できますことを楽しみにしております。\n今後ともどうぞよろしくお願いいたします。${sig}`;
     }
     if (tone === "casual") {
-      return `ご連絡ありがとうございます！\nご丁重にご返事いただきありがとうございます。\nまたの機会によろしくお願いします！${sig}`;
+      return `ご連絡ありがとうございます！\nご丁寧にご返信いただきありがとうございます。\nまたの機会にぜひよろしくお願いします！${sig}`;
     }
     return `返事ありがとう！\nまた機会があればよろしくね！${sig}`;
   }
@@ -362,7 +373,7 @@ function buildReply(opts: GenerateGreetingOptions): string {
       return `ご連絡ありがとうございます。\nご検討いただき、誠にありがとうございます。\nお時間のある際にご連絡いただけますと幸いです。\n引き続きどうぞよろしくお願いいたします。${sig}`;
     }
     if (tone === "casual") {
-      return `ご連絡ありがとうございます！\n検討いただきありがとうございます。\nお時間のある時にご連絡ください！${sig}`;
+      return `ご連絡ありがとうございます！\nご検討いただきありがとうございます。\nお時間のあるときにご連絡いただけると嬉しいです！${sig}`;
     }
     return `検討してくれてありがとう！\n決まったら連絡してね！${sig}`;
   }
@@ -370,10 +381,10 @@ function buildReply(opts: GenerateGreetingOptions): string {
   // こちらから辞退
   if (replySubtype === "self_decline") {
     if (tone === "formal") {
-      return `ご連絡ありがとうございます。\n誠に恐れ入りますが、今回は弊社の都合によりご一緒することが難しい状況でございます。\nまたの機会にご一緒できますことを楽しみにしております。\n今後ともどうぞよろしくお願いいたします。${sig}`;
+      return `ご連絡いただき、誠にありがとうございます。\n大変恐縮ではございますが、今回は弊社の都合により参加を見送らせていただきたく存じます。\nまたの機会にご一緒できますことを楽しみにしております。\n今後ともどうぞよろしくお願いいたします。${sig}`;
     }
     if (tone === "casual") {
-      return `ご連絡ありがとうございます。\n大変申し訳ございませんが、今回は弊社の事情により参加が難しい状況です。\nまたの機会によろしくお願いします。${sig}`;
+      return `ご連絡ありがとうございます！\n申し訳ないのですが、今回は都合がつかず参加が難しい状況です。\nまたの機会にぜひよろしくお願いします！${sig}`;
     }
     return `ごめん、今回は参加できそうにないんだ。\nまた誘ってね！${sig}`;
   }
@@ -382,10 +393,10 @@ function buildReply(opts: GenerateGreetingOptions): string {
   if (replySubtype === "change_request") {
     const slotsBlock = newScheduleText?.trim() ? `\n\n${newScheduleText.trim()}` : "";
     if (tone === "formal") {
-      return `ご連絡ありがとうございます。\n大変恐れ入りますが、一度ご確認いただいた打ち合わせにつきまして、日程の変更をお願いできますでしょうか。${slotsBlock ? `\n\n以下の日程でご都合はいかがでしょうか。${slotsBlock}` : ""}\n\nお手数をおかけして大変申し訳ございません。\n${closing(tone)}${sig}`;
+      return `ご連絡いただき、誠にありがとうございます。\n大変恐縮ではございますが、先日ご調整いただいた打ち合わせにつきまして、日程の変更をお願いできますでしょうか。${slotsBlock ? `\n\n以下の日程でご都合はいかがでしょうか。${slotsBlock}` : ""}\n\nお手数をおかけし申し訳ございません。\n${closing(tone)}${sig}`;
     }
     if (tone === "casual") {
-      return `ご連絡ありがとうございます。\n大変申し訳ございませんが、一度日程変更をお願いできますか？${slotsBlock ? `\n\n${slotsBlock}` : ""}\n\n${closing(tone)}${sig}`;
+      return `ご連絡ありがとうございます！\n申し訳ないのですが、日程の変更をお願いできますか？${slotsBlock ? `\n\n以下の日程でいかがでしょうか？${slotsBlock}` : ""}\n\nご確認よろしくお願いします！${sig}`;
     }
     return `ごめん、日程変更したくて。${slotsBlock ? `\n\n${slotsBlock}` : ""}\n\n${closing(tone)}${sig}`;
   }
