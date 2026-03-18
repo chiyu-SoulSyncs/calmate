@@ -1,6 +1,6 @@
 import { eq, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, profileCards, InsertProfileCard, googleTokens, InsertGoogleToken } from "../drizzle/schema";
+import { InsertUser, users, profileCards, InsertProfileCard, googleTokens, InsertGoogleToken, allowedEmails } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -147,4 +147,52 @@ export async function deleteProfileCard(id: number, userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.delete(profileCards).where(and(eq(profileCards.id, id), eq(profileCards.userId, userId)));
+}
+
+// ─── Allowed Emails ───
+
+export async function isEmailAllowed(email: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const result = await db.select().from(allowedEmails).where(eq(allowedEmails.email, email.toLowerCase())).limit(1);
+  return result.length > 0;
+}
+
+export async function getAllowedEmails() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(allowedEmails);
+}
+
+export async function addAllowedEmail(email: string, invitedBy: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(allowedEmails).values({ email: email.toLowerCase(), invitedBy }).onDuplicateKeyUpdate({ set: { invitedBy } });
+}
+
+export async function removeAllowedEmail(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(allowedEmails).where(eq(allowedEmails.id, id));
+}
+
+// ─── Admin: User management ───
+
+export async function getAllUsers() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ id: users.id, name: users.name, email: users.email, role: users.role, lastSignedIn: users.lastSignedIn, createdAt: users.createdAt }).from(users);
+}
+
+export async function updateUserRole(userId: number, role: "user" | "admin") {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(users).set({ role }).where(eq(users.id, userId));
+}
+
+export async function deleteUser(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(profileCards).where(eq(profileCards.userId, userId));
+  await db.delete(users).where(eq(users.id, userId));
 }

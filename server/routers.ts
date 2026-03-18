@@ -2,7 +2,7 @@ import { z } from "zod";
 import { COOKIE_NAME } from "../shared/const.js";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 
 export const appRouter = router({
@@ -53,6 +53,30 @@ export const appRouter = router({
       .mutation(({ ctx, input }) =>
         db.deleteProfileCard(input.id, ctx.user.id)
       ),
+  }),
+
+  // 管理者用ルート
+  admin: router({
+    // 招待済みメールアドレス一覧
+    allowedEmails: adminProcedure.query(() => db.getAllowedEmails()),
+    // メールアドレスを招待
+    inviteEmail: adminProcedure
+      .input(z.object({ email: z.string().email().max(320) }))
+      .mutation(({ ctx, input }) => db.addAllowedEmail(input.email, ctx.user.id)),
+    // 招待を取り消し
+    removeEmail: adminProcedure
+      .input(z.object({ id: z.number().int() }))
+      .mutation(({ input }) => db.removeAllowedEmail(input.id)),
+    // ユーザー一覧
+    users: adminProcedure.query(() => db.getAllUsers()),
+    // ユーザーの権限変更
+    updateRole: adminProcedure
+      .input(z.object({ userId: z.number().int(), role: z.enum(["user", "admin"]) }))
+      .mutation(({ input }) => db.updateUserRole(input.userId, input.role)),
+    // ユーザー削除
+    deleteUser: adminProcedure
+      .input(z.object({ userId: z.number().int() }))
+      .mutation(({ input }) => db.deleteUser(input.userId)),
   }),
 });
 

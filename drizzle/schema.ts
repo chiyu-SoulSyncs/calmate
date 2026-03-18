@@ -60,3 +60,17 @@ export const profileCards = mysqlTable("profileCards", {
 
 export type ProfileCard = typeof profileCards.$inferSelect;
 export type InsertProfileCard = typeof profileCards.$inferInsert;
+
+/**
+ * 招待済みメールアドレス
+ * このテーブルに登録されたメールアドレスのみログイン可能
+ */
+export const allowedEmails = mysqlTable("allowedEmails", {
+  id: int("id").autoincrement().primaryKey(),
+  email: varchar("email", { length: 320 }).notNull().unique(),
+  invitedBy: int("invitedBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type AllowedEmail = typeof allowedEmails.$inferSelect;
+export type InsertAllowedEmail = typeof allowedEmails.$inferInsert;

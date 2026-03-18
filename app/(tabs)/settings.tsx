@@ -47,7 +47,7 @@ function formatHM(hour: number, min: number) {
 export default function SettingsScreen() {
   const colors = useColors();
   const router = useRouter();
-  const { user, isAuthenticated, loading: authLoading } = useAuthContext();
+  const { user, isAuthenticated, loading: authLoading, logout } = useAuthContext();
 
   const [googleConnected, setGoogleConnected] = useState(false);
   const [checkingGoogle, setCheckingGoogle] = useState(false);
@@ -469,6 +469,30 @@ export default function SettingsScreen() {
             </View>
           ))}
         </View>
+
+        {/* ログアウト */}
+        {isAuthenticated && (
+          <View style={{ paddingHorizontal: 16, marginBottom: 20 }}>
+            <Pressable
+              style={({ pressed }) => [{
+                backgroundColor: "#FEE2E2", borderRadius: 16, paddingVertical: 14,
+                alignItems: "center", justifyContent: "center",
+              }, pressed && { opacity: 0.7 }]}
+              onPress={() => {
+                if (Platform.OS === "web") {
+                  if (window.confirm("ログアウトしますか？")) logout();
+                } else {
+                  Alert.alert("ログアウト", "ログアウトしますか？", [
+                    { text: "キャンセル", style: "cancel" },
+                    { text: "ログアウト", style: "destructive", onPress: logout },
+                  ]);
+                }
+              }}
+            >
+              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.error }}>ログアウト</Text>
+            </Pressable>
+          </View>
+        )}
       </ScrollView>
     </ScreenContainer>
   );

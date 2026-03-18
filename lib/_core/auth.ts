@@ -7,6 +7,7 @@ export type User = {
   googleId: string | null;
   name: string | null;
   email: string | null;
+  role: "user" | "admin";
 };
 
 export async function getSessionToken(): Promise<string | null> {

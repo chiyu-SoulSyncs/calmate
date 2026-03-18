@@ -5,9 +5,12 @@ import { HapticTab } from "@/components/haptic-tab";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { Platform } from "react-native";
 import { useColors } from "@/hooks/use-colors";
+import { useAuthContext } from "@/lib/auth-context";
 
 export default function TabLayout() {
   const colors = useColors();
+  const { user } = useAuthContext();
+  const isAdmin = user?.role === "admin";
   const insets = useSafeAreaInsets();
   // タブバー高さ：iOSのホームインジケーター（34px）を確実に考慮
   const bottomPadding = Platform.OS === "web" ? 12 : Math.max(insets.bottom, 16);
@@ -54,6 +57,14 @@ export default function TabLayout() {
         options={{
           title: "設定",
           tabBarIcon: ({ color }) => <IconSymbol size={26} name="gearshape.fill" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="admin"
+        options={{
+          title: "管理",
+          tabBarIcon: ({ color }) => <IconSymbol size={26} name="shield.fill" color={color} />,
+          href: isAdmin ? "/admin" : null,
         }}
       />
     </Tabs>

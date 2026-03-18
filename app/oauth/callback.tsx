@@ -53,6 +53,7 @@ export default function OAuthCallback() {
               googleId: userData.googleId ?? null,
               name: userData.name ?? null,
               email: userData.email ?? null,
+              role: userData.role ?? "user",
             };
             await Auth.setUserInfo(userInfo);
           } catch (err) {

@@ -89,6 +89,7 @@ describe("Auth utilities", () => {
       googleId: "google-sub-123",
       name: "Test User",
       email: "test@example.com",
+      role: "user",
     };
     await Auth.setUserInfo(mockUser);
     expect(SecureStore.setItemAsync).toHaveBeenCalledWith(

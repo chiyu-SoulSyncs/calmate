@@ -1,7 +1,7 @@
 import { COOKIE_NAME, ONE_YEAR_MS } from "../../shared/const.js";
 import { randomBytes } from "crypto";
 import type { Express, Request, Response } from "express";
-import { getUserByOpenId, upsertUser } from "../db";
+import { getUserByOpenId, upsertUser, isEmailAllowed } from "../db";
 import { getSessionCookieOptions } from "./cookies";
 import { ENV } from "./env";
 import { sdk } from "./sdk";
@@ -25,6 +25,7 @@ function buildUserResponse(
     googleId: user?.openId ?? null,
     name: user?.name ?? null,
     email: user?.email ?? null,
+    role: (user as any)?.role ?? "user",
   };
 }
 
@@ -130,6 +131,35 @@ export function registerOAuthRoutes(app: Express) {
       const googleId = userinfo.sub as string;
       const name = (userinfo.name as string) || "";
       const email = (userinfo.email as string) || null;
+
+      // Check if user is already registered or email is invited
+      const existingUser = await getUserByOpenId(googleId);
+      if (!existingUser && email) {
+        const allowed = await isEmailAllowed(email);
+        if (!allowed) {
+          // Not invited - show error
+          const APP_SCHEME = "calmate";
+          const ua = req.headers["user-agent"] || "";
+          const referer = req.headers["referer"] || "";
+          const isWebBrowser =
+            req.headers["x-web-preview"] !== undefined ||
+            referer.includes("localhost:8081") ||
+            (ua.includes("Mozilla") && !ua.includes("Expo"));
+
+          if (!isWebBrowser) {
+            const deepLinkUrl = new URL(`${APP_SCHEME}://oauth/callback`);
+            deepLinkUrl.searchParams.set("error", "not_invited");
+            res.redirect(302, deepLinkUrl.toString());
+          } else {
+            const frontendUrl =
+              process.env.EXPO_WEB_PREVIEW_URL ||
+              process.env.EXPO_PACKAGER_PROXY_URL ||
+              "http://localhost:8081";
+            res.redirect(302, `${frontendUrl}?error=not_invited`);
+          }
+          return;
+        }
+      }
 
       // Upsert user in DB using Google sub as openId
       const lastSignedIn = new Date();

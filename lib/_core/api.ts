@@ -80,6 +80,7 @@ export async function getMe(): Promise<{
   googleId: string | null;
   name: string | null;
   email: string | null;
+  role: "user" | "admin";
 } | null> {
   try {
     const result = await apiCall<{ user: any }>("/api/auth/me");

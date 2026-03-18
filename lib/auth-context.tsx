@@ -50,6 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             googleId: apiUser.googleId,
             name: apiUser.name,
             email: apiUser.email,
+            role: apiUser.role ?? "user",
           };
           setUser(userInfo);
           await Auth.setUserInfo(userInfo);

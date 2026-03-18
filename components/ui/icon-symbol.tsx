@@ -73,6 +73,9 @@ const MAPPING = {
   "arrow.triangle.2.circlepath": "sync",
   "mappin": "place",
   "mappin.circle.fill": "place",
+  // 管理
+  "shield.fill": "admin-panel-settings",
+  "calendar.badge.exclamationmark": "event-busy",
 } as unknown as IconMapping;
 
 /**

@@ -38,6 +38,7 @@ export default function LoginScreen() {
               googleId: userObj.googleId ?? null,
               name: userObj.name ?? null,
               email: userObj.email ?? null,
+              role: userObj.role ?? "user",
             };
             await Auth.setUserInfo(userInfo);
           } catch (e) {
